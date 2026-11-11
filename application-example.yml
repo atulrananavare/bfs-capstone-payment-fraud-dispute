@@ -1,0 +1,72 @@
+# Example configuration for the fraud-case-agent capstone.
+#
+# Copy to application-local.yml (or export as environment variables) and
+# adjust for your environment. NEVER commit real credentials, API keys,
+# passwords or tokens. Placeholders below are intentional.
+#
+# Phase 2 requires NO AI provider, vector store or external database:
+# persistence is an embedded, in-memory H2 database migrated by Flyway.
+
+spring:
+  application:
+    name: fraud-case-agent
+  datasource:
+    url: jdbc:h2:mem:fraudcasedb;DB_CLOSE_DELAY=-1;MODE=LEGACY
+    username: sa
+    password: ""
+  jpa:
+    hibernate:
+      ddl-auto: validate          # Flyway owns the schema; Hibernate verifies it
+    open-in-view: false
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+
+server:
+  port: 8080
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      show-details: never
+
+# ---------------------------------------------------------------------------
+# Capstone settings. Safety values are startup-validated invariants; setting
+# human-review-required=false, allow-financial-actions=true or
+# allow-customer-contact=true will fail application startup.
+# ---------------------------------------------------------------------------
+capstone:
+  # Analysis implementation: rules | spring-ai
+  processor-mode: rules
+  human-review-required: true
+  allow-financial-actions: false
+  allow-customer-contact: false
+  retrieval:
+    top-k: 4
+    similarity-threshold: 0.72
+  memory:
+    max-messages: 12
+  tools:
+    timeout-ms: 2500
+    deterministic-seed: fraud-training-v1
+
+# ---------------------------------------------------------------------------
+# FUTURE (later phases only — nothing below is active in Phase 2):
+#
+# spring:
+#   ai:
+#     anthropic:                      # or the approved model provider
+#       api-key: ${ANTHROPIC_API_KEY} # set via environment/secret manager only
+#     vectorstore:
+#       <provider>:
+#         # connection details go here when the vector store is selected
+#
+#   datasource:                       # to move off embedded H2 later
+#     url: jdbc:<db>://<host>/<schema>
+#     username: ${DB_USERNAME}
+#     password: ${DB_PASSWORD}
+# ---------------------------------------------------------------------------

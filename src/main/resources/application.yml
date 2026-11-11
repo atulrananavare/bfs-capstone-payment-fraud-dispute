@@ -1,0 +1,51 @@
+spring:
+  application:
+    name: fraud-case-agent
+  jackson:
+    deserialization:
+      # Clients must not smuggle server-managed fields (caseId, analystId)
+      # or other unexpected properties into requests.
+      fail-on-unknown-properties: true
+  # Embedded H2 for the synthetic training application. No external database
+  # or credentials are required. Flyway owns the schema; Hibernate validates it.
+  datasource:
+    url: jdbc:h2:mem:fraudcasedb;DB_CLOSE_DELAY=-1;MODE=LEGACY
+    driver-class-name: org.h2.Driver
+    username: sa
+    password: ""
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+
+server:
+  port: 8080
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      # Never expose component details, credentials or internals.
+      show-details: never
+
+capstone:
+  # Processor implementations: rules | spring-ai (spring-ai arrives in a later phase).
+  processor-mode: rules
+  # Safety invariants. These values are validated at startup; unsafe overrides fail fast.
+  human-review-required: true
+  allow-financial-actions: false
+  allow-customer-contact: false
+  retrieval:
+    top-k: 4
+    similarity-threshold: 0.72
+  memory:
+    max-messages: 12
+  tools:
+    timeout-ms: 2500
+    deterministic-seed: fraud-training-v1
