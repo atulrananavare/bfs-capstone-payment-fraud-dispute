@@ -1,6 +1,7 @@
 package com.example.fraudcase.api;
 
 import com.example.fraudcase.application.CaseNotFoundException;
+import com.example.fraudcase.application.ConversationUnavailableException;
 import com.example.fraudcase.application.InvestigationNotPermittedException;
 import com.example.fraudcase.application.ProcessorModeUnavailableException;
 import com.example.fraudcase.application.RecommendationNotFoundException;
@@ -95,6 +96,15 @@ public class GlobalExceptionHandler {
                 HttpStatus.CONFLICT.value(),
                 "RECOMMENDATION_REJECTED",
                 "The produced recommendation failed validation and was not persisted"));
+    }
+
+    @ExceptionHandler(ConversationUnavailableException.class)
+    public ResponseEntity<ApiErrorResponse> handleConversationUnavailable(
+            ConversationUnavailableException ex) {
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(ApiErrorResponse.of(
+                HttpStatus.CONFLICT.value(),
+                "CONVERSATION_UNAVAILABLE",
+                "Conversational follow-up requires the spring-ai processor mode"));
     }
 
     @ExceptionHandler(ProcessorModeUnavailableException.class)

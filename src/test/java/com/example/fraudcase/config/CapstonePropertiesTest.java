@@ -49,4 +49,18 @@ class CapstonePropertiesTest {
         aboveOneThreshold.getRetrieval().setSimilarityThreshold(1.5);
         assertThat(validator.validate(aboveOneThreshold)).isNotEmpty();
     }
+
+    @Test
+    void invalidMemoryConfigurationFailsValidation() {
+        var validator = jakarta.validation.Validation
+                .buildDefaultValidatorFactory().getValidator();
+
+        CapstoneProperties zeroMax = new CapstoneProperties();
+        zeroMax.getMemory().setMaxMessages(0);
+        assertThat(validator.validate(zeroMax)).isNotEmpty();
+
+        CapstoneProperties negativeMax = new CapstoneProperties();
+        negativeMax.getMemory().setMaxMessages(-3);
+        assertThat(validator.validate(negativeMax)).isNotEmpty();
+    }
 }

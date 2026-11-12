@@ -1,0 +1,288 @@
+package com.example.fraudcase.agent.springai;
+
+import com.example.fraudcase.agent.common.ActionClaimGuard;
+import com.example.fraudcase.application.AuditService;
+import com.example.fraudcase.config.CapstoneProperties;
+import com.example.fraudcase.domain.ActorType;
+import com.example.fraudcase.domain.AuditEventType;
+import com.example.fraudcase.domain.EvidenceItem;
+import com.example.fraudcase.domain.FollowUpAnswer;
+import com.example.fraudcase.domain.FollowUpContext;
+import com.example.fraudcase.domain.PolicyCitation;
+import com.example.fraudcase.domain.PolicyPassage;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.ai.chat.messages.AssistantMessage;
+import org.springframework.ai.chat.messages.Message;
+import org.springframework.ai.chat.messages.SystemMessage;
+import org.springframework.ai.chat.messages.UserMessage;
+import org.springframework.ai.chat.model.ChatModel;
+import org.springframework.ai.chat.model.ChatResponse;
+import org.springframework.ai.chat.prompt.Prompt;
+import org.springframework.ai.converter.BeanOutputConverter;
+import org.springframework.ai.model.tool.ToolCallingChatOptions;
+import org.springframework.ai.model.tool.ToolCallingManager;
+import org.springframework.ai.model.tool.ToolExecutionResult;
+import org.springframework.ai.tool.ToolCallback;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.io.Resource;
+import org.springframework.stereotype.Component;
+
+import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+
+/**
+ * Spring AI conversational follow-up (Phase 5). Same guarantees as the
+ * investigation adapter:
+ *
+ * <ul>
+ *   <li>Trusted instructions only in the system message; case data,
+ *       conversation history and the question itself are untrusted data
+ *       inside {@code <untrusted_*>} tags. A persisted malicious message
+ *       reloads as DATA — never as instructions.</li>
+ *   <li>Only the six allow-listed case-bound read-only tools are
+ *       registered; the loop is bounded by {@code capstone.ai.max-rounds}.
+ *       Nothing else can execute — conversation cannot trigger actions,
+ *       state transitions or new recommendations.</li>
+ *   <li>Citations may only reference chunk ids retrieved this turn or
+ *       already validated for this case; every field comes from the
+ *       trusted source, never from model output. Unknown ids invalidate
+ *       the whole answer.</li>
+ *   <li>An answer claiming an executed action, echoing the system prompt
+ *       or naming foreign evidence is invalid — the caller falls back to
+ *       a deterministic safe answer.</li>
+ *   <li>Scope is fixed by the trusted {@link FollowUpContext}: the model
+ *       cannot change caseId, memory or authorisation scope.</li>
+ * </ul>
+ */
+@Component
+public class SpringAiFollowUpAgent {
+
+    private static final Logger log =
+            LoggerFactory.getLogger(SpringAiFollowUpAgent.class);
+
+    /** Distinctive phrases from the follow-up system prompt resource. */
+    private static final List<String> PROMPT_LEAK_MARKERS = List.of(
+            "CASE FOLLOW-UP ASSISTANT",
+            "Non-negotiable rules");
+
+    static final int MAX_ANSWER_LENGTH = 4000;
+
+    private final ObjectProvider<ChatModel> chatModel;
+    private final ToolCallingManager toolCallingManager;
+    private final SpringAiToolAdapter toolAdapter;
+    private final AuditService auditService;
+    private final CapstoneProperties properties;
+    private final Resource systemPromptResource;
+
+    public SpringAiFollowUpAgent(ObjectProvider<ChatModel> chatModel,
+                                 ToolCallingManager toolCallingManager,
+                                 SpringAiToolAdapter toolAdapter,
+                                 AuditService auditService,
+                                 CapstoneProperties properties,
+                                 @Value("classpath:prompts/follow-up-system-prompt.st")
+                                 Resource systemPromptResource) {
+        this.chatModel = chatModel;
+        this.toolCallingManager = toolCallingManager;
+        this.toolAdapter = toolAdapter;
+        this.auditService = auditService;
+        this.properties = properties;
+        this.systemPromptResource = systemPromptResource;
+    }
+
+    public FollowUpAnswer answer(FollowUpContext context) {
+        ChatModel model = chatModel.getIfAvailable();
+        if (model == null) {
+            throw new SpringAiProcessingException(
+                    "no ChatModel is configured for spring-ai mode");
+        }
+        String caseId = context.caseId();
+        auditService.record(caseId, AuditEventType.MODEL_INVOCATION_STARTED,
+                ActorType.SYSTEM, "follow-up|" + context.correlationId()
+                        + "|history=" + context.history().size());
+        try {
+            FollowUpAnswer result = invoke(model, context);
+            auditService.record(caseId, AuditEventType.MODEL_INVOCATION_COMPLETED,
+                    ActorType.SYSTEM, "follow-up|" + context.correlationId()
+                            + "|evidence=" + result.evidenceIds().size()
+                            + "|citations=" + result.policyCitations().size());
+            return result;
+        } catch (SpringAiProcessingException ex) {
+            throw ex;
+        } catch (RuntimeException ex) {
+            // Provider/network/SDK failures — log the type only.
+            log.warn("Spring AI follow-up failed for case {} ({})",
+                    caseId, ex.getClass().getSimpleName());
+            throw new SpringAiProcessingException(
+                    "model invocation failed: " + ex.getClass().getSimpleName(), ex);
+        }
+    }
+
+    private FollowUpAnswer invoke(ChatModel model, FollowUpContext context) {
+        BeanOutputConverter<AiFollowUpOutput> converter =
+                new BeanOutputConverter<>(AiFollowUpOutput.class);
+
+        String systemText = SpringAiPromptBuilder.systemPrompt(
+                systemPromptText(), converter.getFormat());
+        String userText = FollowUpPromptBuilder.userPrompt(context);
+
+        // Follow-up may only consult the same six allow-listed case-bound
+        // read-only tools — nothing else can execute.
+        List<ToolCallback> callbacks = toolAdapter.callbacksFor(
+                context.fraudCase(), context.correlationId());
+
+        ToolCallingChatOptions options = ToolCallingChatOptions.builder()
+                .toolCallbacks(callbacks)
+                .internalToolExecutionEnabled(false)
+                .temperature(properties.getAi().getTemperature())
+                .build();
+
+        List<Message> history = new ArrayList<>(List.of(
+                new SystemMessage(systemText), new UserMessage(userText)));
+        Prompt prompt = new Prompt(history, options);
+
+        int maxRounds = properties.getAi().getMaxRounds();
+        ChatResponse response = null;
+        for (int round = 0; round < maxRounds; round++) {
+            response = model.call(prompt);
+            AssistantMessage output = response.getResult().getOutput();
+            if (!output.hasToolCalls()) {
+                break;
+            }
+            if (round == maxRounds - 1) {
+                throw new SpringAiProcessingException(
+                        "follow-up did not finish within the tool-call round "
+                                + "bound (" + maxRounds + ")");
+            }
+            ToolExecutionResult executed =
+                    toolCallingManager.executeToolCalls(prompt, response);
+            prompt = new Prompt(executed.conversationHistory(), options);
+        }
+
+        String text = response == null || response.getResult() == null
+                ? null : response.getResult().getOutput().getText();
+        if (text == null || text.isBlank()) {
+            throw new InvalidModelOutputException(
+                    "model returned empty follow-up output");
+        }
+
+        AiFollowUpOutput output;
+        try {
+            output = converter.convert(text);
+        } catch (RuntimeException ex) {
+            throw new InvalidModelOutputException(
+                    "follow-up output is not valid structured JSON", ex);
+        }
+        if (output == null) {
+            throw new InvalidModelOutputException("follow-up output did not convert");
+        }
+        return toDomain(output, context);
+    }
+
+    private FollowUpAnswer toDomain(AiFollowUpOutput out, FollowUpContext context) {
+        if (out.caseId() != null && !out.caseId().isBlank()
+                && !out.caseId().equals(context.caseId())) {
+            // The model claimed a different case — untrusted, not re-scoped.
+            throw new InvalidModelOutputException(
+                    "follow-up output caseId does not match the current case");
+        }
+        if (Boolean.FALSE.equals(out.humanReviewRequired())) {
+            throw new InvalidModelOutputException(
+                    "humanReviewRequired must always be true");
+        }
+        String answer = out.answer() == null ? "" : out.answer().strip();
+        if (answer.isBlank()) {
+            throw new InvalidModelOutputException("follow-up answer is empty");
+        }
+        if (answer.length() > MAX_ANSWER_LENGTH) {
+            throw new InvalidModelOutputException(
+                    "follow-up answer exceeds the configured bound");
+        }
+        if (PROMPT_LEAK_MARKERS.stream().anyMatch(answer::contains)) {
+            throw new InvalidModelOutputException(
+                    "answer contains system-prompt material");
+        }
+        if (ActionClaimGuard.claimsExecutedAction(answer)) {
+            throw new InvalidModelOutputException(
+                    "answer claims an executed autonomous action, which is "
+                            + "permanently out of scope");
+        }
+        List<String> evidenceIds = validateEvidenceIds(out.evidenceIds(), context);
+        List<PolicyCitation> citations =
+                resolveCitations(out.policyCitations(), context);
+        return new FollowUpAnswer(answer, evidenceIds, citations,
+                bounded(out.missingInformation()), true);
+    }
+
+    private static List<String> validateEvidenceIds(List<String> ids,
+                                                    FollowUpContext context) {
+        List<String> clean = bounded(ids);
+        List<String> caseEvidence = context.evidence().stream()
+                .map(EvidenceItem::evidenceId).toList();
+        for (String id : clean) {
+            if (!caseEvidence.contains(id)) {
+                throw new InvalidModelOutputException(
+                        "answer references evidence that does not belong to "
+                                + "this case: " + id);
+            }
+        }
+        return List.copyOf(clean);
+    }
+
+    /**
+     * A citation id resolves only against passages retrieved this turn or
+     * citations already validated and persisted for THIS case. Every field
+     * is taken from the trusted source — never from model output.
+     */
+    private static List<PolicyCitation> resolveCitations(
+            List<String> citedChunkIds, FollowUpContext context) {
+        if (citedChunkIds == null || citedChunkIds.isEmpty()) {
+            return List.of();
+        }
+        Map<String, PolicyCitation> trusted = new LinkedHashMap<>();
+        for (PolicyPassage p : context.policyPassages()) {
+            trusted.put(p.chunkId(), PolicyCitation.from(p));
+        }
+        if (context.latestRecommendation() != null) {
+            for (PolicyCitation c : context.latestRecommendation().policyCitations()) {
+                trusted.putIfAbsent(c.chunkId(), c);
+            }
+        }
+        List<PolicyCitation> resolved = new ArrayList<>();
+        for (String chunkId : citedChunkIds) {
+            if (chunkId == null || chunkId.isBlank()) {
+                continue;
+            }
+            PolicyCitation citation = trusted.get(chunkId);
+            if (citation == null) {
+                throw new InvalidModelOutputException(
+                        "model cited a policy passage that is not valid for "
+                                + "this case: " + chunkId);
+            }
+            resolved.add(citation);
+        }
+        return List.copyOf(resolved);
+    }
+
+    private static List<String> bounded(List<String> values) {
+        if (values == null) {
+            return List.of();
+        }
+        return values.stream().filter(v -> v != null && !v.isBlank()).toList();
+    }
+
+    private String systemPromptText() {
+        try {
+            return systemPromptResource.getContentAsString(
+                    java.nio.charset.StandardCharsets.UTF_8);
+        } catch (IOException ex) {
+            throw new UncheckedIOException(
+                    "follow-up system prompt resource is unreadable", ex);
+        }
+    }
+}

@@ -79,3 +79,24 @@ this repository, in every phase of the project.
 29. **The rules adapter must work with no AI.** `RulesFraudCaseAgent` must
     never require a model, provider credential, embedding or vector store,
     and it must never invent an authentication outcome.
+
+## Conversation Memory (Phase 5)
+
+30. **`caseId` is the only memory key.** Every memory read/write is scoped
+    by the case resolved from the request path — never a global,
+    session, user, customer or analyst key.
+31. **Persisted conversation rows are append-only and ordered** by a
+    case-local sequence number assigned under a per-case lock; concurrent
+    writes must never collide or reorder.
+32. **The active memory window is bounded and configurable**
+    (`capstone.memory.max-messages`, default 12). The full record stays
+    persisted; the model only ever sees the bounded window.
+33. **Persisted conversation text is untrusted data forever** — including
+    after restart. It may never become instructions, change case scope,
+    alter state or lift review obligations.
+34. **Follow-up answers carry no new authority.** Foreign evidence/citation
+    ids, wrong-case output, action claims and `humanReviewRequired=false`
+    are rejected and never persisted as answers; failure degrades to a
+    deterministic safe fallback.
+35. **Audit and logs must never store raw message content or secrets** —
+    only bounded metadata (ids, sequence numbers, hash prefixes, counts).
