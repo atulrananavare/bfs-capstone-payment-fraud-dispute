@@ -19,6 +19,8 @@ class CaseStateTransitionTest {
         assertThat(CaseState.READY_FOR_REVIEW.canTransitionTo(CaseState.UNDER_REVIEW)).isTrue();
         assertThat(CaseState.UNDER_REVIEW.canTransitionTo(CaseState.ROUTED)).isTrue();
         assertThat(CaseState.UNDER_REVIEW.canTransitionTo(CaseState.CLOSED)).isTrue();
+        // Phase 6: request-more-information refinement.
+        assertThat(CaseState.UNDER_REVIEW.canTransitionTo(CaseState.INCOMPLETE)).isTrue();
         assertThat(CaseState.ROUTED.canTransitionTo(CaseState.CLOSED)).isTrue();
     }
 

@@ -6,6 +6,11 @@ import com.example.fraudcase.application.InvestigationNotPermittedException;
 import com.example.fraudcase.application.ProcessorModeUnavailableException;
 import com.example.fraudcase.application.RecommendationNotFoundException;
 import com.example.fraudcase.application.RecommendationValidationException;
+import com.example.fraudcase.application.ReviewAuthorizationException;
+import com.example.fraudcase.application.ReviewConflictException;
+import com.example.fraudcase.application.ReviewNotPermittedException;
+import com.example.fraudcase.application.ReviewValidationException;
+import com.example.fraudcase.application.StaleRecommendationException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
@@ -113,6 +118,51 @@ public class GlobalExceptionHandler {
                 HttpStatus.CONFLICT.value(),
                 "PROCESSOR_MODE_UNAVAILABLE",
                 "The configured processor mode is not available"));
+    }
+
+    @ExceptionHandler(ReviewAuthorizationException.class)
+    public ResponseEntity<ApiErrorResponse> handleReviewForbidden(
+            ReviewAuthorizationException ex) {
+        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(ApiErrorResponse.of(
+                HttpStatus.FORBIDDEN.value(),
+                "REVIEW_FORBIDDEN",
+                "The resolved identity is not authorised to perform this review operation"));
+    }
+
+    @ExceptionHandler(ReviewNotPermittedException.class)
+    public ResponseEntity<ApiErrorResponse> handleReviewNotPermitted(
+            ReviewNotPermittedException ex) {
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(ApiErrorResponse.of(
+                HttpStatus.CONFLICT.value(),
+                "REVIEW_NOT_PERMITTED",
+                "The case state does not allow a review disposition"));
+    }
+
+    @ExceptionHandler(StaleRecommendationException.class)
+    public ResponseEntity<ApiErrorResponse> handleStaleRecommendation(
+            StaleRecommendationException ex) {
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(ApiErrorResponse.of(
+                HttpStatus.CONFLICT.value(),
+                "STALE_RECOMMENDATION",
+                "The review does not reference this case's current recommendation"));
+    }
+
+    @ExceptionHandler(ReviewConflictException.class)
+    public ResponseEntity<ApiErrorResponse> handleReviewConflict(
+            ReviewConflictException ex) {
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(ApiErrorResponse.of(
+                HttpStatus.CONFLICT.value(),
+                "REVIEW_CONFLICT",
+                "A concurrent or duplicate review already resolved this recommendation"));
+    }
+
+    @ExceptionHandler(ReviewValidationException.class)
+    public ResponseEntity<ApiErrorResponse> handleReviewValidation(
+            ReviewValidationException ex) {
+        return ResponseEntity.badRequest().body(ApiErrorResponse.of(
+                HttpStatus.BAD_REQUEST.value(),
+                "REVIEW_VALIDATION_FAILED",
+                "Review submission failed validation"));
     }
 
     @ExceptionHandler(Exception.class)

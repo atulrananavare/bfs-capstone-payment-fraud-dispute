@@ -8,6 +8,7 @@ import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import jakarta.persistence.Version;
 
 import java.time.OffsetDateTime;
 
@@ -41,6 +42,15 @@ public class FraudCaseEntity {
 
     @Column(name = "created_at", nullable = false)
     private OffsetDateTime createdAt;
+
+    /**
+     * Optimistic-locking token (Phase 6): two concurrent review submissions
+     * cannot both win a state transition — the loser's flush fails with a
+     * stale-version conflict instead of silently double-dispositioning.
+     */
+    @Version
+    @Column(name = "version", nullable = false)
+    private long version;
 
     protected FraudCaseEntity() {
     }

@@ -52,6 +52,11 @@ capstone:
     enabled: true
     top-k: 4                   # max policy passages supplied to the model
     similarity-threshold: 0.72 # application-enforced minimum match score
+  review:
+    # Phase 6 human review. Synthetic identity seam — replaceable by an
+    # authenticated ReviewerIdentityProvider when real security lands.
+    actor-id: TRAINING-REVIEWER-001
+    actor-role: REVIEWER       # ANALYST/AUDITOR cannot disposition cases
   memory:
     max-messages: 12
   tools:

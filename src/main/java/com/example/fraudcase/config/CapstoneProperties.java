@@ -56,6 +56,10 @@ public class CapstoneProperties {
     @NotNull
     private Ai ai = new Ai();
 
+    @Valid
+    @NotNull
+    private Review review = new Review();
+
     public enum ProcessorMode {
         RULES,
         SPRING_AI
@@ -219,6 +223,40 @@ public class CapstoneProperties {
         }
     }
 
+    /**
+     * Synthetic training reviewer identity (Phase 6). The values are
+     * application-supplied — never read from request payloads. When a real
+     * security context arrives, {@code ReviewerIdentityProvider} is swapped
+     * for an authenticated implementation and these fields are ignored.
+     */
+    public static class Review {
+
+        /** Synthetic reviewer id used until authenticated identity exists. */
+        @NotBlank
+        private String actorId = "TRAINING-REVIEWER-001";
+
+        /** Synthetic role resolved for the training reviewer. */
+        @NotNull
+        private com.example.fraudcase.domain.ReviewerRole actorRole =
+                com.example.fraudcase.domain.ReviewerRole.REVIEWER;
+
+        public String getActorId() {
+            return actorId;
+        }
+
+        public void setActorId(String actorId) {
+            this.actorId = actorId;
+        }
+
+        public com.example.fraudcase.domain.ReviewerRole getActorRole() {
+            return actorRole;
+        }
+
+        public void setActorRole(com.example.fraudcase.domain.ReviewerRole actorRole) {
+            this.actorRole = actorRole;
+        }
+    }
+
     public ProcessorMode getProcessorMode() {
         return processorMode;
     }
@@ -281,5 +319,13 @@ public class CapstoneProperties {
 
     public void setAi(Ai ai) {
         this.ai = ai;
+    }
+
+    public Review getReview() {
+        return review;
+    }
+
+    public void setReview(Review review) {
+        this.review = review;
     }
 }

@@ -56,6 +56,11 @@ capstone:
     enabled: true
     top-k: 4
     similarity-threshold: 0.72
+  review:
+    # Synthetic training reviewer identity (Phase 6). Application-supplied;
+    # never read from request payloads.
+    actor-id: TRAINING-REVIEWER-001
+    actor-role: REVIEWER
   memory:
     max-messages: 12
   tools:

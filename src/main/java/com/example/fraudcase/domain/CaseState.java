@@ -14,10 +14,15 @@ import java.util.Set;
  *   <li>ENRICHING -&gt; READY_FOR_REVIEW | INCOMPLETE</li>
  *   <li>INCOMPLETE -&gt; ENRICHING | CLOSED</li>
  *   <li>READY_FOR_REVIEW -&gt; UNDER_REVIEW</li>
- *   <li>UNDER_REVIEW -&gt; ROUTED | CLOSED</li>
+ *   <li>UNDER_REVIEW -&gt; ROUTED | CLOSED | INCOMPLETE</li>
  *   <li>ROUTED -&gt; CLOSED</li>
  *   <li>CLOSED -&gt; (terminal)</li>
  * </ul>
+ *
+ * <p>{@code UNDER_REVIEW -&gt; INCOMPLETE} (Phase 6 refinement) lets an
+ * authorised reviewer request more information: the case re-enters the
+ * documented INCOMPLETE -&gt; ENRICHING path rather than a new ad-hoc
+ * transition.
  *
  * <p>Transitions are enforced by application/domain logic only. A model must
  * never set state directly.
@@ -37,7 +42,7 @@ public enum CaseState {
             ENRICHING, EnumSet.of(READY_FOR_REVIEW, INCOMPLETE),
             INCOMPLETE, EnumSet.of(ENRICHING, CLOSED),
             READY_FOR_REVIEW, EnumSet.of(UNDER_REVIEW),
-            UNDER_REVIEW, EnumSet.of(ROUTED, CLOSED),
+            UNDER_REVIEW, EnumSet.of(ROUTED, CLOSED, INCOMPLETE),
             ROUTED, EnumSet.of(CLOSED),
             CLOSED, EnumSet.noneOf(CaseState.class)
     );

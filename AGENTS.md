@@ -100,3 +100,40 @@ this repository, in every phase of the project.
     deterministic safe fallback.
 35. **Audit and logs must never store raw message content or secrets** —
     only bounded metadata (ids, sequence numbers, hash prefixes, counts).
+
+## Human Review (Phase 6)
+
+36. **AI recommendations never become final decisions automatically.** An
+    explicit `ReviewDisposition` from the authorised review workflow is
+    the only path to a case disposition.
+37. **Only the review workflow may create a `ReviewDisposition`.** No
+    processor, tool, conversation endpoint or model callback may reach it.
+38. **Reviewer identity comes from trusted application context**
+    (`ReviewerIdentityProvider`), never from request payloads — a client
+    cannot supply or spoof `reviewerId`, timestamps or case state.
+39. **Reviewer reason is mandatory** for every disposition; blank or
+    missing reason is rejected with nothing persisted.
+40. **The original recommendation is immutable after disposition.** A
+    human override is stored separately — recommendation and disposition
+    remain independently traceable.
+41. **Missing information and material contradictions must stay visible**
+    and be explicitly acknowledged before a final disposition; nothing
+    may be invented to fill them.
+42. **Human review cannot fabricate evidence or policy citations.** Review
+    requests never create authoritative `EvidenceItem` or `PolicyCitation`
+    records.
+43. **Human review records disposition only** — it never executes a
+    financial, account or customer-contact action. `CLOSED`/`ROUTED` are
+    workflow states, not banking outcomes.
+44. **Review state transitions are application-controlled.** Controllers,
+    models, tools and request JSON may not set state; `CLOSED` remains
+    terminal.
+45. **Review history is append-only and immutable** — no update or delete
+    paths; corrections are future explicit append events.
+46. **Stale or foreign recommendation references are rejected**, and
+    duplicate/concurrent submissions are controlled (idempotency key +
+    optimistic locking + unique constraint).
+47. **Provider outage must not block persisted human review** — the
+    disposition path reads only stored data.
+48. **Every review disposition and rejection is auditable** via append-only
+    events with bounded, safe metadata.
