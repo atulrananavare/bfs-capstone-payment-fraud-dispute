@@ -53,6 +53,7 @@ capstone:
   allow-financial-actions: false
   allow-customer-contact: false
   retrieval:
+    enabled: true
     top-k: 4
     similarity-threshold: 0.72
   memory:

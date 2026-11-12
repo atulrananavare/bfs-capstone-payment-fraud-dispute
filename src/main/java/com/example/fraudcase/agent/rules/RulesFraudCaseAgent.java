@@ -10,6 +10,7 @@ import com.example.fraudcase.domain.FraudCaseContext;
 import com.example.fraudcase.domain.FraudCaseRecommendation;
 import com.example.fraudcase.domain.IssueType;
 import com.example.fraudcase.domain.MerchantRecognition;
+import com.example.fraudcase.domain.PolicyContextStatus;
 import com.example.fraudcase.domain.RecommendedRoute;
 import com.example.fraudcase.domain.RiskLevel;
 import com.example.fraudcase.domain.ToolOutcome;
@@ -43,7 +44,10 @@ import java.util.Set;
  *       + FRAUD_INVESTIGATION + MEDIUM</li>
  *   <li><b>R008</b> no anomalies → GENUINE_TRANSACTION + MANUAL_REVIEW + LOW</li>
  * </ol>
- * R005 (policy grounding) is reserved for the RAG phase and is never faked.
+ * R005 (policy grounding gap) fires after the substantive rules when a
+ * policy context was requested for this investigation and none is usable:
+ * route forced to MANUAL_REVIEW, confidence capped, and the gap recorded —
+ * policy is never faked to cover the absence.
  *
  * <p><b>Confidence</b> is a deterministic rule score (documented per rule),
  * not a statistical probability: each unavailable non-mandatory tool reduces
@@ -53,7 +57,7 @@ import java.util.Set;
 public class RulesFraudCaseAgent implements FraudCaseProcessor {
 
     public static final Set<String> RULE_IDS =
-            Set.of("R001", "R002", "R003", "R004", "R006", "R007", "R008");
+            Set.of("R001", "R002", "R003", "R004", "R005", "R006", "R007", "R008");
 
     private static final double MISSING_EVIDENCE_PENALTY = 0.05;
     private static final double CONFIDENCE_FLOOR = 0.05;
@@ -70,6 +74,10 @@ public class RulesFraudCaseAgent implements FraudCaseProcessor {
 
     @Override
     public FraudCaseRecommendation analyze(FraudCaseContext context) {
+        return applyR005(evaluate(context), context);
+    }
+
+    private FraudCaseRecommendation evaluate(FraudCaseContext context) {
         FraudCase fraudCase = context.fraudCase();
         ClaimFacts claim = fraudCase.claim();
         List<String> missing = new ArrayList<>();
@@ -238,6 +246,39 @@ public class RulesFraudCaseAgent implements FraudCaseProcessor {
                 context, List.of(EvidenceProvenance.CUSTOMER_INTAKE), List.of("R008"), missing,
                 "R008: no high-severity anomalies detected and no dispute pattern matched; "
                         + "evidence supports a lower-risk outcome. Routing to manual review.");
+    }
+
+    /**
+     * R005 — policy grounding gap. When an investigation requested policy
+     * context and none is usable (nothing matched, or retrieval failed), no
+     * substantive route may stand: the case is routed to manual review with
+     * the gap recorded. Fires only in flows that actually performed
+     * retrieval; pure rules mode sees NOT_REQUESTED and is untouched.
+     */
+    private FraudCaseRecommendation applyR005(
+            FraudCaseRecommendation rec, FraudCaseContext context) {
+        if (context.policyStatus() != PolicyContextStatus.NO_MATCH
+                && context.policyStatus() != PolicyContextStatus.UNAVAILABLE) {
+            return rec;
+        }
+        List<String> ruleIds = new ArrayList<>(rec.ruleIds());
+        ruleIds.add("R005");
+        List<String> missing = new ArrayList<>(rec.missingInformation());
+        missing.add("valid applicable policy guidance unavailable; "
+                + "manual review required");
+        String marker = context.policyStatus() == PolicyContextStatus.NO_MATCH
+                ? "no applicable policy passage matched"
+                : "policy retrieval was unavailable";
+        return new FraudCaseRecommendation(
+                rec.caseId(), rec.classification(), rec.riskLevel(),
+                RecommendedRoute.MANUAL_REVIEW,
+                Math.min(rec.confidence(), 0.50),
+                true, rec.evidenceIds(), rec.policyCitations(),
+                List.copyOf(missing), List.copyOf(ruleIds),
+                rec.toolTraceIds(),
+                rec.rationale() + " R005: " + marker
+                        + "; routing to manual review rather than proceeding "
+                        + "without policy guidance.");
     }
 
     private FraudCaseRecommendation build(

@@ -47,8 +47,11 @@ capstone:
   allow-financial-actions: false
   allow-customer-contact: false
   retrieval:
-    top-k: 4
-    similarity-threshold: 0.72
+    # Phase 4 policy grounding. When false, no embedding/vector/retrieval
+    # beans exist; rules mode is unaffected and spring-ai mode abstains.
+    enabled: true
+    top-k: 4                   # max policy passages supplied to the model
+    similarity-threshold: 0.72 # application-enforced minimum match score
   memory:
     max-messages: 12
   tools:

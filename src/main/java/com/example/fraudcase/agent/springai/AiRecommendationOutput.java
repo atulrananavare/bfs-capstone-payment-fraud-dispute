@@ -10,8 +10,10 @@ import java.util.List;
  *
  * <p>{@code ruleIds} is deliberately absent: the model did not run the
  * rules engine, so it may never claim deterministic rule ids.
- * {@code policyCitations} is always rejected when non-empty — no policy
- * retrieval exists in this phase.
+ * {@code policyCitations} holds chunk ids only — the model may point at a
+ * retrieved passage, but every citation field (document, version, section,
+ * score, exact passage) is resolved from trusted retrieval metadata, never
+ * from model output.
  */
 public record AiRecommendationOutput(
         String caseId,

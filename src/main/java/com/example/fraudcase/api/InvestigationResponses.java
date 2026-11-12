@@ -61,6 +61,22 @@ public final class InvestigationResponses {
             OffsetDateTime executedAt) {
     }
 
+    /** Approved citation metadata plus the exact retrieved passage — the
+     *  reviewer-visible ground for a policy claim. No embeddings, prompts or
+     *  chain-of-thought are ever exposed. */
+    public record CitationResponse(
+            String citationId,
+            String recommendationId,
+            String documentId,
+            String title,
+            String version,
+            String effectiveDate,
+            String section,
+            String chunkId,
+            double score,
+            String passage) {
+    }
+
     public record RecommendationResponse(
             String recommendationId,
             String caseId,

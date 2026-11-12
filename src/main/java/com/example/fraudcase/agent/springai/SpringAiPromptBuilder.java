@@ -5,6 +5,7 @@ import com.example.fraudcase.domain.CustomerFacts;
 import com.example.fraudcase.domain.EvidenceItem;
 import com.example.fraudcase.domain.FraudCase;
 import com.example.fraudcase.domain.FraudCaseContext;
+import com.example.fraudcase.domain.PolicyPassage;
 import com.example.fraudcase.domain.ToolOutcome;
 import com.example.fraudcase.domain.TransactionFacts;
 
@@ -100,8 +101,33 @@ public final class SpringAiPromptBuilder {
         }
         sb.append("</valid_tool_trace_ids>\n\n");
 
+        sb.append("<untrusted_policy_passages>\n");
+        if (context.policyPassages().isEmpty()) {
+            sb.append("(none - no applicable policy passage was retrieved; ")
+                    .append("policy grounding is unavailable)\n");
+        }
+        for (PolicyPassage p : context.policyPassages()) {
+            sb.append("--- passage chunkId=").append(p.chunkId())
+                    .append(" | document=").append(p.documentId())
+                    .append(" v").append(p.version())
+                    .append(" | section=").append(p.section())
+                    .append(" | score=").append(String.format("%.3f", p.score()))
+                    .append(" ---\n");
+            sb.append(bound(p.passage())).append('\n');
+        }
+        sb.append("</untrusted_policy_passages>\n\n");
+
+        sb.append("<valid_policy_passage_ids>\n");
+        if (context.policyPassages().isEmpty()) {
+            sb.append("(none)\n");
+        }
+        for (PolicyPassage p : context.policyPassages()) {
+            sb.append("- ").append(p.chunkId()).append('\n');
+        }
+        sb.append("</valid_policy_passage_ids>\n\n");
+
         sb.append("Produce the structured FraudCaseRecommendation now. Use only ")
-                .append("evidence ids and trace ids that ")
+                .append("evidence ids, trace ids and policy passage ids that ")
                 .append("appear above. If the evidence is insufficient or ")
                 .append("contradictory, choose INSUFFICIENT_EVIDENCE with ")
                 .append("route MANUAL_REVIEW.");

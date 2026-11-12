@@ -5,9 +5,12 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 
+import java.time.LocalDate;
+
 /**
- * Prepared for the RAG phase. Rules-mode recommendations legitimately have
- * no citations; policy is never fabricated to populate this table.
+ * One persisted policy citation attached to a validated recommendation.
+ * {@code passage} stores the exact retrieved chunk text — the citation is
+ * produced by the retrieval layer, never from model output.
  */
 @Entity
 @Table(name = "policy_citation")
@@ -35,12 +38,22 @@ public class PolicyCitationEntity {
     @Column(name = "score", nullable = false)
     private double score;
 
+    @Column(name = "title", length = 160)
+    private String title;
+
+    @Column(name = "effective_date")
+    private LocalDate effectiveDate;
+
+    @Column(name = "passage", length = 4000)
+    private String passage;
+
     protected PolicyCitationEntity() {
     }
 
     public PolicyCitationEntity(String citationId, String recommendationId,
                                 String documentId, String version, String section,
-                                String chunkId, double score) {
+                                String chunkId, double score, String title,
+                                LocalDate effectiveDate, String passage) {
         this.citationId = citationId;
         this.recommendationId = recommendationId;
         this.documentId = documentId;
@@ -48,6 +61,9 @@ public class PolicyCitationEntity {
         this.section = section;
         this.chunkId = chunkId;
         this.score = score;
+        this.title = title;
+        this.effectiveDate = effectiveDate;
+        this.passage = passage;
     }
 
     public String getCitationId() {
@@ -76,5 +92,17 @@ public class PolicyCitationEntity {
 
     public double getScore() {
         return score;
+    }
+
+    public String getTitle() {
+        return title;
+    }
+
+    public LocalDate getEffectiveDate() {
+        return effectiveDate;
+    }
+
+    public String getPassage() {
+        return passage;
     }
 }

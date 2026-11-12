@@ -8,6 +8,8 @@ import com.example.fraudcase.domain.AuditEventType;
 import com.example.fraudcase.domain.CaseClassification;
 import com.example.fraudcase.domain.FraudCaseContext;
 import com.example.fraudcase.domain.FraudCaseRecommendation;
+import com.example.fraudcase.domain.PolicyCitation;
+import com.example.fraudcase.domain.PolicyPassage;
 import com.example.fraudcase.domain.RecommendedRoute;
 import com.example.fraudcase.domain.RiskLevel;
 import org.slf4j.Logger;
@@ -192,12 +194,8 @@ public class SpringAiFraudCaseAgent implements FraudCaseProcessor {
             throw new InvalidModelOutputException(
                     "model output caseId does not match the investigated case");
         }
-        if (out.policyCitations() != null && !out.policyCitations().isEmpty()) {
-            // No retrieval exists in this phase — any cited passage is
-            // fabrication, so the whole output is invalid.
-            throw new InvalidModelOutputException(
-                    "model claimed policy citations with no retrieval available");
-        }
+        List<PolicyCitation> citations =
+                resolveCitations(out.policyCitations(), context);
         if (out.rationale() != null && PROMPT_LEAK_MARKERS.stream()
                 .anyMatch(out.rationale()::contains)) {
             // Parroting system-prompt material is not a rationale.
@@ -218,7 +216,7 @@ public class SpringAiFraudCaseAgent implements FraudCaseProcessor {
                     context.caseId(), classification, risk, route,
                     confidence, humanReview,
                     bounded(out.evidenceIds()),
-                    List.of(), // policyCitations — no retrieval exists in this phase
+                    citations,
                     bounded(out.missingInformation()),
                     List.of(), // ruleIds — the model never ran the rules engine
                     bounded(out.toolTraceIds()),
@@ -231,6 +229,33 @@ public class SpringAiFraudCaseAgent implements FraudCaseProcessor {
                     "model output violates the recommendation contract: "
                             + ex.getMessage(), ex);
         }
+    }
+
+    /**
+     * Resolve model-supplied chunk ids against the passages actually
+     * retrieved for THIS investigation. Every citation field comes from the
+     * trusted {@link PolicyPassage}; an unknown or foreign chunk id means
+     * the model fabricated it, so the whole output is invalid.
+     */
+    private static List<PolicyCitation> resolveCitations(
+            List<String> citedChunkIds, FraudCaseContext context) {
+        if (citedChunkIds == null || citedChunkIds.isEmpty()) {
+            return List.of();
+        }
+        List<PolicyCitation> resolved = new ArrayList<>();
+        for (String chunkId : citedChunkIds) {
+            if (chunkId == null || chunkId.isBlank()) {
+                continue;
+            }
+            PolicyPassage passage = context.policyPassages().stream()
+                    .filter(p -> p.chunkId().equals(chunkId))
+                    .findFirst()
+                    .orElseThrow(() -> new InvalidModelOutputException(
+                            "model cited a policy passage that was not "
+                                    + "retrieved for this case: " + chunkId));
+            resolved.add(PolicyCitation.from(passage));
+        }
+        return List.copyOf(resolved);
     }
 
     private static <E extends Enum<E>> E parseEnum(

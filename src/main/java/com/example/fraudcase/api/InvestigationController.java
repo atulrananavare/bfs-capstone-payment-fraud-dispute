@@ -1,5 +1,6 @@
 package com.example.fraudcase.api;
 
+import com.example.fraudcase.api.InvestigationResponses.CitationResponse;
 import com.example.fraudcase.api.InvestigationResponses.EvidenceItemResponse;
 import com.example.fraudcase.api.InvestigationResponses.InvestigationSummaryResponse;
 import com.example.fraudcase.api.InvestigationResponses.RecommendationResponse;
@@ -99,7 +100,10 @@ public class InvestigationController {
                 .stream()
                 .map(c -> new com.example.fraudcase.domain.PolicyCitation(
                         c.getDocumentId(), c.getVersion(), c.getSection(),
-                        c.getChunkId(), c.getScore()))
+                        c.getChunkId(), c.getScore(), c.getTitle(),
+                        c.getEffectiveDate() == null
+                                ? null : c.getEffectiveDate().toString(),
+                        c.getPassage()))
                 .toList();
         return new RecommendationResponse(
                 entity.getRecommendationId(), entity.getCaseId(),
@@ -108,6 +112,28 @@ public class InvestigationController {
                 entity.getConfidence(), entity.isHumanReviewRequired(),
                 entity.getEvidenceIds(), citations, entity.getMissingInformation(),
                 entity.getRuleIds(), entity.getToolTraceIds(), entity.getRationale());
+    }
+
+    /**
+     * Case-scoped citation view: only citations persisted for THIS case's
+     * latest validated recommendation — exact retrieved passages included.
+     * There is intentionally no path/document parameter: arbitrary document
+     * or file access is impossible through this endpoint.
+     */
+    @GetMapping("/citations")
+    public List<CitationResponse> citations(@PathVariable String caseId) {
+        fraudCaseService.getCase(caseId);
+        RecommendationEntity entity = investigationService.latestRecommendation(caseId);
+        return citationRepository.findByRecommendationId(entity.getRecommendationId())
+                .stream()
+                .map(c -> new CitationResponse(
+                        c.getCitationId(), c.getRecommendationId(),
+                        c.getDocumentId(), c.getTitle(), c.getVersion(),
+                        c.getEffectiveDate() == null
+                                ? null : c.getEffectiveDate().toString(),
+                        c.getSection(), c.getChunkId(), c.getScore(),
+                        c.getPassage()))
+                .toList();
     }
 
     private String latestRecommendationId(String caseId) {

@@ -135,6 +135,11 @@ public class CapstoneProperties {
 
     public static class Retrieval {
 
+        /** Master switch for the RAG infrastructure. When false, no
+         *  embedding/vector/retrieval beans exist and every processor sees
+         *  policy as not requested (rules) or unavailable (spring-ai). */
+        private boolean enabled = true;
+
         /** Top-K policy passages to retrieve. */
         @Min(1)
         @Max(20)
@@ -144,6 +149,14 @@ public class CapstoneProperties {
         @DecimalMin("0.0")
         @DecimalMax("1.0")
         private double similarityThreshold = 0.72;
+
+        public boolean isEnabled() {
+            return enabled;
+        }
+
+        public void setEnabled(boolean enabled) {
+            this.enabled = enabled;
+        }
 
         public int getTopK() {
             return topK;
