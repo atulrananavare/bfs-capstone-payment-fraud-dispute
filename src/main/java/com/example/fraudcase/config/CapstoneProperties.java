@@ -62,7 +62,8 @@ public class CapstoneProperties {
 
     public enum ProcessorMode {
         RULES,
-        SPRING_AI
+        SPRING_AI,
+        LANGCHAIN4J
     }
 
     /**

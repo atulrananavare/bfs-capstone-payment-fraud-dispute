@@ -1,6 +1,8 @@
 package com.example.fraudcase.agent.springai;
 
 import com.example.fraudcase.TestFixtures;
+import com.example.fraudcase.agent.common.CaseToolInvoker;
+import com.example.fraudcase.agent.common.InvalidModelOutputException;
 import com.example.fraudcase.DomainFixtures;
 import com.example.fraudcase.application.AuditService;
 import com.example.fraudcase.application.EvidenceRecorder;
@@ -73,14 +75,16 @@ class SpringAiFraudCaseAgentTest {
         EvidenceRecorder evidenceRecorder =
                 new EvidenceRecorder(mock(EvidenceItemRepository.class));
         SpringAiToolAdapter adapter = new SpringAiToolAdapter(
-                new TransactionDetailsTool(properties, clock),
-                new DeviceSignalsTool(properties, clock),
-                new CompareRecentLocationsTool(properties, clock),
-                new MerchantRiskProfileTool(properties, clock),
-                new PriorDisputesTool(properties, clock),
-                new CaseSlaTool(properties, clock),
-                toolExecution, evidenceRecorder,
-                properties.getTools().getTimeoutMs(), properties.getAi().getMaxToolCalls());
+                new CaseToolInvoker(
+                        new TransactionDetailsTool(properties, clock),
+                        new DeviceSignalsTool(properties, clock),
+                        new CompareRecentLocationsTool(properties, clock),
+                        new MerchantRiskProfileTool(properties, clock),
+                        new PriorDisputesTool(properties, clock),
+                        new CaseSlaTool(properties, clock),
+                        toolExecution, evidenceRecorder,
+                        properties.getTools().getTimeoutMs()),
+                properties);
 
         stub = new StubChatModel();
         ObjectProvider<ChatModel> provider = mock(ObjectProvider.class);

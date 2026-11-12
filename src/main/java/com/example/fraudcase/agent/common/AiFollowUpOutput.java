@@ -1,4 +1,4 @@
-package com.example.fraudcase.agent.springai;
+package com.example.fraudcase.agent.common;
 
 import java.util.List;
 

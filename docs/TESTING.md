@@ -26,6 +26,7 @@ mvn test -Dtest=Phase10CaseListTest       # analyst worklist gap fix
 | Persistence | repository/store tests | Flyway-validated schema, append-only audit/review, case-local sequence |
 | UI (MockMvc + Thymeleaf) | `UiSpringAiTest`, Phase 8 UI probes | all screens render, escaped output, CSRF on forms, advisory labels |
 | AI safety | `SpringAiPromptInjectionTest`, `SpringAiModeInvestigationTest`, `SpringAiRagGroundingTest` | stub-scripted model output: grounded persistence, rejection of unsafe output, `RULES_FALLBACK` on failure, injection treated as data |
+| AI parity | `LangChain4jFraudCaseAgentTest`, `LangChain4jModeInvestigationTest`, `ProcessorSelectorTest` | same contract on the LangChain4j adapter (`StubLc4jChatModel`): valid/malformed output, tool-call loop, `RULES_FALLBACK`, `LANGCHAIN4J` mode persistence, fail-fast without a model, unselected provider never required |
 | Evaluation | `CaseEvaluationRunner` + two drivers | E01–E18 deterministic checks + E20–E25 AI leg, 0/1/2 scoring, JSON reports under `target/` |
 
 ## T01–T12

@@ -22,10 +22,11 @@ lives behind the adapter boundary.
 │  CaseState machine · classification/route/risk/intake enums     │
 │  invariants — framework-neutral, no AI imports                  │
 ├───────────────────────┬─────────────────────────────────────────┤
-│ RULES ADAPTER (now)   │ AI ADAPTER (now — Phase 3)              │
+│ RULES ADAPTER (now)   │ AI ADAPTERS (now — Phase 3 + parity)    │
 │ RulesFraudCaseAgent   │ SpringAiFraudCaseAgent                  │
-│ deterministic R001-8  │ system prompt · ChatModel · case-bound  │
-│ fallback · rule IDs   │ tool callbacks · typed output · bounded │
+│ deterministic R001-8  │ LangChain4jFraudCaseAgent               │
+│ fallback · rule IDs   │ same prompt · ChatModel · case-bound    │
+│                       │ tool calls · typed output · bounded     │
 ├───────────────────────┴─────────────────────────────────────────┤
 │ TOOLS (now)            │ KNOWLEDGE                              │
 │ 6 allow-listed,        │ PolicyIngestionService · Retriever     │
@@ -112,6 +113,28 @@ rules processor persisted as `RULES_FALLBACK` — audited as
 `ChatModel` bean exists only when `processor-mode=spring-ai` AND a provider
 key is configured; selecting spring-ai without a model fails startup.
 Case memory remains for a later phase.
+
+### LangChain4j adapter (implemented — provider parity)
+`LangChain4jFraudCaseAgent` + `LangChain4jFollowUpAgent`
+(`agent.langchain4j` — the only package importing `dev.langchain4j`
+types, on LangChain4j 1.22.0). Behavioural parity with the Spring AI
+adapter is structural, not copied: both consume the same
+`agent.common` assets — `CasePromptBuilder`/`FollowUpPromptBuilder`,
+`AiRecommendationOutput`/`AiFollowUpOutput`, `JsonOutputContract`,
+`CaseToolInvoker` and `ModelOutputMappers` — so prompts, allow-list,
+case scope, budgets, output validation and rejection semantics are
+literally identical; only the framework calls differ
+(`ToolSpecification`/`ToolExecutor` + `ChatRequest` loop instead of
+`ToolCallback`/`ToolCallingManager`). The `dev.langchain4j` `ChatModel`
+bean exists only when `processor-mode=langchain4j` AND
+`capstone.langchain4j.anthropic.api-key` is set; selecting langchain4j
+without a model fails startup, and the unselected provider's bean and
+credentials are never required. `RecommendationMode.LANGCHAIN4J` is
+persisted on recommendations so reviewers can see the producing
+framework. Case memory maps through `Lc4jCaseChatMemoryStore` (a
+read-only `ChatMemoryStore` over the shared `CaseConversationStore`;
+writes stay on the locked append path) + `Lc4jConversationWindow`
+(`MessageWindowChatMemory`, `memoryId == caseId`).
 
 ### Tools boundary (implemented — evidence tools)
 Explicitly allow-listed, read-only synthetic evidence tools in `tools/`:
@@ -209,8 +232,9 @@ Follow-up answers go through `SpringAiFollowUpAgent`; wrong-case output,
 foreign evidence/citation ids, action claims and
 `humanReviewRequired=false` are rejected and never persisted — the
 deterministic `SAFE_FALLBACK` answer is stored instead. Conversation
-requires spring-ai mode; rules mode returns `CONVERSATION_UNAVAILABLE`
-(409).
+requires an AI mode (`spring-ai` or `langchain4j` — selected via
+`ProcessorSelector.followUpAgent()`); rules mode returns
+`CONVERSATION_UNAVAILABLE` (409).
 
 ### UI boundary (implemented — Phase 7, extended Phase 10)
 Thymeleaf analyst workbench under `/ui/**`: case list (`/ui/cases`),

@@ -1,7 +1,6 @@
 package com.example.fraudcase.application;
 
-import com.example.fraudcase.agent.springai.InvalidModelOutputException;
-import com.example.fraudcase.agent.springai.SpringAiFollowUpAgent;
+import com.example.fraudcase.agent.common.InvalidModelOutputException;
 import com.example.fraudcase.api.CaseMessageRequest;
 import com.example.fraudcase.config.CapstoneProperties;
 import com.example.fraudcase.domain.ActorType;
@@ -18,6 +17,7 @@ import com.example.fraudcase.domain.PolicyCitation;
 import com.example.fraudcase.domain.PolicyContextStatus;
 import com.example.fraudcase.domain.PolicyPassage;
 import com.example.fraudcase.memory.CaseConversationStore;
+import com.example.fraudcase.memory.ConversationWindow;
 import com.example.fraudcase.persistence.EvidenceItemRepository;
 import com.example.fraudcase.persistence.FraudCaseStore;
 import com.example.fraudcase.persistence.PolicyCitationRepository;
@@ -31,8 +31,6 @@ import com.example.fraudcase.observability.CorrelationIdFilter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
-import org.springframework.ai.chat.memory.ChatMemory;
-import org.springframework.ai.chat.messages.Message;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
@@ -80,12 +78,12 @@ public class CaseMessageService {
 
     private final FraudCaseStore caseStore;
     private final CaseConversationStore conversationStore;
-    private final ChatMemory chatMemory;
+    private final ObjectProvider<ConversationWindow> conversationWindow;
     private final EvidenceItemRepository evidenceRepository;
     private final RecommendationRepository recommendationRepository;
     private final PolicyCitationRepository citationRepository;
     private final ObjectProvider<PolicyRetriever> policyRetriever;
-    private final SpringAiFollowUpAgent followUpAgent;
+    private final ProcessorSelector processorSelector;
     private final AuditService auditService;
     private final CapstoneProperties properties;
     private final CaseMetrics metrics;
@@ -95,23 +93,23 @@ public class CaseMessageService {
 
     public CaseMessageService(FraudCaseStore caseStore,
                               CaseConversationStore conversationStore,
-                              ChatMemory chatMemory,
+                              ObjectProvider<ConversationWindow> conversationWindow,
                               EvidenceItemRepository evidenceRepository,
                               RecommendationRepository recommendationRepository,
                               PolicyCitationRepository citationRepository,
                               ObjectProvider<PolicyRetriever> policyRetriever,
-                              SpringAiFollowUpAgent followUpAgent,
+                              ProcessorSelector processorSelector,
                               AuditService auditService,
                               CapstoneProperties properties,
                               CaseMetrics metrics) {
         this.caseStore = caseStore;
         this.conversationStore = conversationStore;
-        this.chatMemory = chatMemory;
+        this.conversationWindow = conversationWindow;
         this.evidenceRepository = evidenceRepository;
         this.recommendationRepository = recommendationRepository;
         this.citationRepository = citationRepository;
         this.policyRetriever = policyRetriever;
-        this.followUpAgent = followUpAgent;
+        this.processorSelector = processorSelector;
         this.auditService = auditService;
         this.properties = properties;
         this.metrics = metrics;
@@ -146,8 +144,7 @@ public class CaseMessageService {
         // Conversational answering requires the Spring AI adapter. Rules
         // mode keeps working for every other operation — it simply has no
         // model to answer with, and no fake answer is invented.
-        if (properties.getProcessorMode()
-                != CapstoneProperties.ProcessorMode.SPRING_AI) {
+        if (!processorSelector.conversationAvailable()) {
             auditService.record(caseId, AuditEventType.CASE_MESSAGE_REJECTED,
                     ActorType.ANALYST, "conversation unavailable in rules mode");
             throw new ConversationUnavailableException(
@@ -234,7 +231,7 @@ public class CaseMessageService {
         FollowUpAnswer answer;
         String answerSource = "MODEL";
         try {
-            answer = followUpAgent.answer(context);
+            answer = processorSelector.followUpAgent().answer(context);
         } catch (InvalidModelOutputException ex) {
             auditService.record(caseId, AuditEventType.MODEL_OUTPUT_REJECTED,
                     ActorType.SYSTEM, bounded(ex.getMessage()));
@@ -286,18 +283,12 @@ public class CaseMessageService {
      * turns enter the prompt; they are rendered as untrusted data.
      */
     private List<ConversationTurn> memoryWindow(String caseId) {
-        List<ConversationTurn> turns = new ArrayList<>();
-        for (Message m : chatMemory.get(caseId)) {
-            ConversationRole role = switch (m.getMessageType()) {
-                case USER -> ConversationRole.USER;
-                case ASSISTANT -> ConversationRole.ASSISTANT;
-                default -> null;
-            };
-            if (role != null && m.getText() != null) {
-                turns.add(new ConversationTurn(role, m.getText()));
-            }
+        ConversationWindow window = conversationWindow.getIfAvailable();
+        if (window == null) {
+            throw new ConversationUnavailableException(
+                    properties.getProcessorMode().name().toLowerCase());
         }
-        return List.copyOf(turns);
+        return window.load(caseId);
     }
 
     /**

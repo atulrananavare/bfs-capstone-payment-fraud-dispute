@@ -1,4 +1,4 @@
-package com.example.fraudcase.agent.springai;
+package com.example.fraudcase.agent.common;
 
 import com.example.fraudcase.domain.ClaimFacts;
 import com.example.fraudcase.domain.CustomerFacts;
@@ -10,7 +10,7 @@ import com.example.fraudcase.domain.ToolOutcome;
 import com.example.fraudcase.domain.TransactionFacts;
 
 /**
- * Composes the trusted/untrusted split for the Spring AI adapter.
+ * Composes the trusted/untrusted split for the AI adapters.
  *
  * <p>Trusted instructions come from the system-prompt resource plus the
  * structured-output format contract — they are the only content in the
@@ -19,12 +19,12 @@ import com.example.fraudcase.domain.TransactionFacts;
  * inside explicit {@code <untrusted_*>} tags so a malicious or confused
  * customer statement cannot masquerade as a system instruction.
  */
-public final class SpringAiPromptBuilder {
+public final class CasePromptBuilder {
 
     /** Untrusted free text is truncated before entering the prompt. */
     static final int UNTRUSTED_TEXT_MAX = 500;
 
-    private SpringAiPromptBuilder() {
+    private CasePromptBuilder() {
     }
 
     public static String systemPrompt(String baseInstructions, String outputFormat) {

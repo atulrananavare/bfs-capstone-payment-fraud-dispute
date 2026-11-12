@@ -41,6 +41,7 @@ Anthropic API key supplied via environment variable.
 |---------------|-----------------------------------------------|--------|
 | Spring Boot   | 3.5.16 (parent POM)                            | Stable, widely supported release line; fully compatible with Java 21 and already resolvable in this environment. |
 | Spring AI     | 1.1.8 (BOM; `spring-ai-client-chat` + `spring-ai-anthropic`) | Phase 3 adapter. Raw artifacts only — no autoconfigure starter, so no provider client exists unless the app wires one. The domain layer never sees Spring AI types. |
+| LangChain4j   | 1.22.0 (`langchain4j` + `langchain4j-anthropic`) | Second provider adapter behind the same `FraudCaseProcessor` contract (`capstone.processor-mode=langchain4j`). Raw artifacts only — no Spring starter; the `dev.langchain4j` `ChatModel` bean exists only in langchain4j mode with a configured key. |
 | Web           | spring-boot-starter-web                        | REST API surface. |
 | Validation    | spring-boot-starter-validation                 | Declarative intake validation (Jakarta Bean Validation). |
 | UI            | spring-boot-starter-thymeleaf                  | Selected server-rendered UI path for later phases. |
@@ -74,6 +75,10 @@ mvn spring-boot:run
 ANTHROPIC_API_KEY=sk-... mvn spring-boot:run \
   -Dspring-boot.run.arguments=--capstone.processor-mode=spring-ai
 
+# run in langchain4j mode (needs CAPSTONE_LANGCHAIN4J_ANTHROPIC_API_KEY)
+CAPSTONE_LANGCHAIN4J_ANTHROPIC_API_KEY=sk-... mvn spring-boot:run \
+  -Dspring-boot.run.arguments=--capstone.processor-mode=langchain4j
+
 # if port 8080 is already in use on your machine:
 mvn spring-boot:run -Dspring-boot.run.arguments=--server.port=8085
 ```
@@ -93,7 +98,7 @@ Then:
 - `GET http://localhost:8080/api/cases/{caseId}/recommendation` → latest
   validated recommendation
 - `POST http://localhost:8080/api/cases/{caseId}/messages` → case-scoped
-  conversational follow-up (spring-ai mode only)
+  conversational follow-up (spring-ai / langchain4j modes only)
 - `GET http://localhost:8080/api/cases/{caseId}/messages` → ordered
   persisted conversation history for the case
 - `POST http://localhost:8080/api/cases/{caseId}/reviews` → mandatory
@@ -139,7 +144,7 @@ All settings live under `capstone.*` (see `application.yml` and
 
 | Key | Default | Meaning |
 |-----|---------|---------|
-| `processor-mode` | `rules` | Processor: `rules` (deterministic, no AI) or `spring-ai` (Spring AI adapter + rules fallback). |
+| `processor-mode` | `rules` | Processor: `rules` (deterministic, no AI), `spring-ai` (Spring AI adapter) or `langchain4j` (LangChain4j adapter) — both AI modes share the identical contract and rules fallback. |
 | `human-review-required` | `true` | Startup-enforced invariant. |
 | `allow-financial-actions` | `false` | Startup-enforced invariant. |
 | `allow-customer-contact` | `false` | Startup-enforced invariant. |
@@ -148,7 +153,7 @@ All settings live under `capstone.*` (see `application.yml` and
 | `memory.max-messages` | `12` | Bounded active-memory window per case (Phase 5); the full record stays persisted. |
 | `tools.timeout-ms` | `2500` | Per-tool timeout bound for evidence tool execution. |
 | `tools.deterministic-seed` | `fraud-training-v1` | Deterministic evidence seed — same input → same evidence. |
-| `ai.timeout-ms` | `10000` | Per model-invocation connect/read bound (spring-ai mode only). |
+| `ai.timeout-ms` | `10000` | Per model-invocation connect/read bound (AI modes). |
 | `ai.temperature` | `0.0` | Sampling temperature for the structured answer. |
 | `ai.max-tool-calls` | `6` | Per-investigation model tool-call budget. |
 | `ai.max-rounds` | `4` | Tool-call loop bound per investigation. |
@@ -159,6 +164,13 @@ Spring AI mode is enabled via `capstone.processor-mode=spring-ai` plus
 and `spring.ai.anthropic.chat.options.model`. Without a key, spring-ai mode
 refuses to start; at runtime any provider failure or invalid output falls
 back to the deterministic rules processor.
+
+LangChain4j mode is enabled via `capstone.processor-mode=langchain4j` plus
+`capstone.langchain4j.anthropic.api-key` (environment variable
+`CAPSTONE_LANGCHAIN4J_ANTHROPIC_API_KEY` — never committed) and optional
+`capstone.langchain4j.anthropic.model`. The same startup gate and runtime
+fallback apply; switching providers is a configuration change only — the
+unselected provider's model bean and credentials are never required.
 
 Datasource defaults: embedded H2
 (`jdbc:h2:mem:fraudcasedb;DB_CLOSE_DELAY=-1;MODE=LEGACY`, user `sa`, empty
@@ -180,11 +192,16 @@ fraudcase/
 │                     EvidenceItem, PolicyCitation, audit enums —
 │                     NO Spring AI imports, ever
 ├── agent/
-│   ├── common/       FraudCaseProcessor contract + RecommendationValidator
+│   ├── common/       FraudCaseProcessor + FollowUpAgent contracts,
+│   │                 RecommendationValidator, shared prompt builders,
+│   │                 output DTOs, CaseToolInvoker, ModelOutputMappers —
+│   │                 all framework-neutral
 │   ├── rules/        RulesFraudCaseAgent — deterministic R001–R008 engine
-│   └── springai/     SpringAiFraudCaseAgent, prompt builder, case-bound
-│                     tool adapter, output DTO + typed exceptions —
-│                     the ONLY package that imports Spring AI chat types
+│   ├── springai/     SpringAiFraudCaseAgent + SpringAiFollowUpAgent +
+│   │                 tool adapter — the ONLY package importing Spring AI
+│   └── langchain4j/  LangChain4jFraudCaseAgent + LangChain4jFollowUpAgent
+│                     + tool adapter — the ONLY package importing
+│                     LangChain4j
 ├── tools/            Six deterministic synthetic evidence tools +
 │                     Determinism helper (seeded hashing, fixture pinning)
 ├── persistence/      JPA entities, Spring Data repositories,
@@ -279,9 +296,16 @@ Everything from Phases 1–2, plus a real Spring AI adapter behind the same
 - **Rules-mode independence.** `capstone.processor-mode=rules` needs no
   model, credential or provider; the `ChatModel` bean exists only when
   spring-ai mode is selected AND `spring.ai.anthropic.api-key` is set.
+- **LangChain4j parity.** `capstone.processor-mode=langchain4j` selects
+  `LangChain4jFraudCaseAgent` — a second provider adapter implementing the
+  same contract with the same prompts, the same six allow-listed tools
+  (via LangChain4j `ToolSpecification`/`ToolExecutor`), the same output
+  DTOs and the same `RecommendationValidator` + `ModelOutputMappers`
+  gates. Only the framework calls differ.
 
-Recommendations expose `mode` (`RULES`/`SPRING_AI`/`RULES_FALLBACK`) and
-`fallbackUsed` so reviewers can see exactly what produced them.
+Recommendations expose `mode` (`RULES`/`SPRING_AI`/`LANGCHAIN4J`/
+`RULES_FALLBACK`) and `fallbackUsed` so reviewers can see exactly what
+produced them.
 
 ## Phase 4 Capabilities (current)
 

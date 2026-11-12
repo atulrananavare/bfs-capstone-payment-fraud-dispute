@@ -63,12 +63,21 @@ info:
     human-review-required: true
 
 capstone:
-  # Processor implementations: rules | spring-ai.
+  # Processor implementations: rules | spring-ai | langchain4j.
   # rules: deterministic, no model/provider/credential required.
   # spring-ai: Spring AI adapter; requires spring.ai.anthropic.api-key
   #   (environment variable only — never committed) and falls back to the
   #   deterministic rules processor on any provider failure or invalid output.
+  # langchain4j: LangChain4j adapter (same contract); requires
+  #   capstone.langchain4j.anthropic.api-key (environment variable only —
+  #   never committed) and applies the same rules fallback.
   processor-mode: rules
+  langchain4j:
+    anthropic:
+      # api-key comes from the CAPSTONE_LANGCHAIN4J_ANTHROPIC_API_KEY
+      # environment variable only — it is deliberately absent here so no
+      # provider client is created without a real key.
+      model: ${CAPSTONE_LANGCHAIN4J_ANTHROPIC_MODEL:claude-sonnet-4-5}
   # Safety invariants. These values are validated at startup; unsafe overrides fail fast.
   human-review-required: true
   allow-financial-actions: false

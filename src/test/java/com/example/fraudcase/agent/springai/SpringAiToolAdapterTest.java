@@ -1,6 +1,7 @@
 package com.example.fraudcase.agent.springai;
 
 import com.example.fraudcase.TestFixtures;
+import com.example.fraudcase.agent.common.CaseToolInvoker;
 import com.example.fraudcase.DomainFixtures;
 import com.example.fraudcase.application.AuditService;
 import com.example.fraudcase.application.EvidenceRecorder;
@@ -55,14 +56,16 @@ class SpringAiToolAdapterTest {
     }
 
     private SpringAiToolAdapter adapter(long timeoutMs, int maxToolCalls) {
-        return new SpringAiToolAdapter(
+        CaseToolInvoker invoker = new CaseToolInvoker(
                 new TransactionDetailsTool(properties, clock),
                 new DeviceSignalsTool(properties, clock),
                 new CompareRecentLocationsTool(properties, clock),
                 new MerchantRiskProfileTool(properties, clock),
                 new PriorDisputesTool(properties, clock),
                 new CaseSlaTool(properties, clock),
-                toolExecution, evidenceRecorder, timeoutMs, maxToolCalls);
+                toolExecution, evidenceRecorder, timeoutMs);
+        properties.getAi().setMaxToolCalls(maxToolCalls);
+        return new SpringAiToolAdapter(invoker, properties);
     }
 
     private ToolCallback callback(List<ToolCallback> callbacks, String name) {

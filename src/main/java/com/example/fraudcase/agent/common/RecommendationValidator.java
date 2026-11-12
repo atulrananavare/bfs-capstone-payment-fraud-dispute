@@ -158,14 +158,14 @@ public class RecommendationValidator {
         // policy support, or claiming any route despite missing grounding.
         String rat = recommendation.rationale() == null
                 ? "" : recommendation.rationale().toLowerCase();
-        if (mode == RecommendationMode.SPRING_AI
+        if (isAiMode(mode)
                 && recommendation.policyCitations().isEmpty()
                 && !allowedCitations.isEmpty()
                 && (rat.contains("policy") || rat.contains("procedure"))) {
             violations.add("rationale makes a procedural/policy claim without "
                     + "citing a retrieved passage");
         }
-        if (mode == RecommendationMode.SPRING_AI
+        if (isAiMode(mode)
                 && (policyStatus == PolicyContextStatus.NO_MATCH
                         || policyStatus == PolicyContextStatus.UNAVAILABLE)) {
             if (!recommendation.policyCitations().isEmpty()) {
@@ -211,12 +211,17 @@ public class RecommendationValidator {
             if (!unknown.isEmpty()) {
                 violations.add("unknown rule ids for rules mode: " + unknown);
             }
-        } else if (mode == RecommendationMode.SPRING_AI
+        } else if (isAiMode(mode)
                 && !recommendation.ruleIds().isEmpty()) {
-            violations.add("spring-ai output must not claim deterministic rule ids: "
+            violations.add("AI-mode output must not claim deterministic rule ids: "
                     + recommendation.ruleIds());
         }
 
         return violations;
+    }
+
+    private static boolean isAiMode(RecommendationMode mode) {
+        return mode == RecommendationMode.SPRING_AI
+                || mode == RecommendationMode.LANGCHAIN4J;
     }
 }

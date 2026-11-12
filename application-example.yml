@@ -52,8 +52,13 @@ info:
 # allow-customer-contact=true will fail application startup.
 # ---------------------------------------------------------------------------
 capstone:
-  # Analysis implementation: rules | spring-ai
+  # Analysis implementation: rules | spring-ai | langchain4j
   processor-mode: rules
+  # langchain4j mode also needs the provider key from the environment:
+  #   CAPSTONE_LANGCHAIN4J_ANTHROPIC_API_KEY=sk-...   (never commit it)
+  langchain4j:
+    anthropic:
+      model: claude-sonnet-4-5
   human-review-required: true
   allow-financial-actions: false
   allow-customer-contact: false

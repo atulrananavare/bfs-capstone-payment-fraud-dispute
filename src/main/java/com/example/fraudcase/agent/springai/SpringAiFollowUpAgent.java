@@ -1,6 +1,12 @@
 package com.example.fraudcase.agent.springai;
 
 import com.example.fraudcase.agent.common.ActionClaimGuard;
+import com.example.fraudcase.agent.common.AiFollowUpOutput;
+import com.example.fraudcase.agent.common.CasePromptBuilder;
+import com.example.fraudcase.agent.common.FollowUpAgent;
+import com.example.fraudcase.agent.common.FollowUpPromptBuilder;
+import com.example.fraudcase.agent.common.InvalidModelOutputException;
+import com.example.fraudcase.agent.common.ModelOutputMappers;
 import com.example.fraudcase.application.AuditService;
 import com.example.fraudcase.config.CapstoneProperties;
 import com.example.fraudcase.domain.ActorType;
@@ -63,7 +69,7 @@ import java.util.Map;
  * </ul>
  */
 @Component
-public class SpringAiFollowUpAgent {
+public class SpringAiFollowUpAgent implements FollowUpAgent {
 
     private static final Logger log =
             LoggerFactory.getLogger(SpringAiFollowUpAgent.class);
@@ -122,7 +128,7 @@ public class SpringAiFollowUpAgent {
                             + "|citations=" + result.policyCitations().size());
             metrics.recordAiDuration(sample, "followup");
             return result;
-        } catch (SpringAiProcessingException ex) {
+        } catch (SpringAiProcessingException | InvalidModelOutputException ex) {
             metrics.aiFailure("followup");
             metrics.recordAiDuration(sample, "followup");
             throw ex;
@@ -141,7 +147,7 @@ public class SpringAiFollowUpAgent {
         BeanOutputConverter<AiFollowUpOutput> converter =
                 new BeanOutputConverter<>(AiFollowUpOutput.class);
 
-        String systemText = SpringAiPromptBuilder.systemPrompt(
+        String systemText = CasePromptBuilder.systemPrompt(
                 systemPromptText(), converter.getFormat());
         String userText = FollowUpPromptBuilder.userPrompt(context);
 
@@ -195,99 +201,8 @@ public class SpringAiFollowUpAgent {
         if (output == null) {
             throw new InvalidModelOutputException("follow-up output did not convert");
         }
-        return toDomain(output, context);
-    }
-
-    private FollowUpAnswer toDomain(AiFollowUpOutput out, FollowUpContext context) {
-        if (out.caseId() != null && !out.caseId().isBlank()
-                && !out.caseId().equals(context.caseId())) {
-            // The model claimed a different case — untrusted, not re-scoped.
-            throw new InvalidModelOutputException(
-                    "follow-up output caseId does not match the current case");
-        }
-        if (Boolean.FALSE.equals(out.humanReviewRequired())) {
-            throw new InvalidModelOutputException(
-                    "humanReviewRequired must always be true");
-        }
-        String answer = out.answer() == null ? "" : out.answer().strip();
-        if (answer.isBlank()) {
-            throw new InvalidModelOutputException("follow-up answer is empty");
-        }
-        if (answer.length() > MAX_ANSWER_LENGTH) {
-            throw new InvalidModelOutputException(
-                    "follow-up answer exceeds the configured bound");
-        }
-        if (PROMPT_LEAK_MARKERS.stream().anyMatch(answer::contains)) {
-            throw new InvalidModelOutputException(
-                    "answer contains system-prompt material");
-        }
-        if (ActionClaimGuard.claimsExecutedAction(answer)) {
-            throw new InvalidModelOutputException(
-                    "answer claims an executed autonomous action, which is "
-                            + "permanently out of scope");
-        }
-        List<String> evidenceIds = validateEvidenceIds(out.evidenceIds(), context);
-        List<PolicyCitation> citations =
-                resolveCitations(out.policyCitations(), context);
-        return new FollowUpAnswer(answer, evidenceIds, citations,
-                bounded(out.missingInformation()), true);
-    }
-
-    private static List<String> validateEvidenceIds(List<String> ids,
-                                                    FollowUpContext context) {
-        List<String> clean = bounded(ids);
-        List<String> caseEvidence = context.evidence().stream()
-                .map(EvidenceItem::evidenceId).toList();
-        for (String id : clean) {
-            if (!caseEvidence.contains(id)) {
-                throw new InvalidModelOutputException(
-                        "answer references evidence that does not belong to "
-                                + "this case: " + id);
-            }
-        }
-        return List.copyOf(clean);
-    }
-
-    /**
-     * A citation id resolves only against passages retrieved this turn or
-     * citations already validated and persisted for THIS case. Every field
-     * is taken from the trusted source — never from model output.
-     */
-    private static List<PolicyCitation> resolveCitations(
-            List<String> citedChunkIds, FollowUpContext context) {
-        if (citedChunkIds == null || citedChunkIds.isEmpty()) {
-            return List.of();
-        }
-        Map<String, PolicyCitation> trusted = new LinkedHashMap<>();
-        for (PolicyPassage p : context.policyPassages()) {
-            trusted.put(p.chunkId(), PolicyCitation.from(p));
-        }
-        if (context.latestRecommendation() != null) {
-            for (PolicyCitation c : context.latestRecommendation().policyCitations()) {
-                trusted.putIfAbsent(c.chunkId(), c);
-            }
-        }
-        List<PolicyCitation> resolved = new ArrayList<>();
-        for (String chunkId : citedChunkIds) {
-            if (chunkId == null || chunkId.isBlank()) {
-                continue;
-            }
-            PolicyCitation citation = trusted.get(chunkId);
-            if (citation == null) {
-                throw new InvalidModelOutputException(
-                        "model cited a policy passage that is not valid for "
-                                + "this case: " + chunkId);
-            }
-            resolved.add(citation);
-        }
-        return List.copyOf(resolved);
-    }
-
-    private static List<String> bounded(List<String> values) {
-        if (values == null) {
-            return List.of();
-        }
-        return values.stream().filter(v -> v != null && !v.isBlank()).toList();
+        return ModelOutputMappers.toFollowUpAnswer(
+                output, context, PROMPT_LEAK_MARKERS);
     }
 
     private String systemPromptText() {

@@ -1,7 +1,9 @@
 # Capstone Self-Evaluation Report
 
 - Participant: **Atul Rananavare**
-- Evaluation date: 2026-11-12
+- Evaluation date: 2026-11-12 (re-evaluated after LangChain4j adapter
+  implementation; prior evaluation scored 96/100 under the single-framework
+  model)
 
 ## 1. Executive Summary
 
@@ -9,15 +11,19 @@
   Resolution Agent (advisory assistant; human review owns every final decision)
 - Primary framework: **Spring AI 1.1.8** (`ChatModel`, `ToolCallback`,
   `ChatMemoryRepository`, `VectorStore`, `EmbeddingModel`, Anthropic provider)
-- Secondary framework: None — LangChain4j is not present in `pom.xml` or source
+- Secondary framework: **LangChain4j 1.22.0** (`dev.langchain4j` `ChatModel`,
+  `ToolSpecification`/`ToolExecutor`, `ChatMemoryStore`,
+  `MessageWindowChatMemory`, Anthropic provider)
 - Build status: **PASS** — `mvn clean verify` → `fraud-case-agent-0.1.0-SNAPSHOT.jar`
-- Test status: **PASS** — 413 tests, 0 failures, 0 errors, 0 skipped
-- Overall score: **96/100**
-- Percentage: **96%**
+- Test status: **PASS** — 431 tests, 0 failures, 0 errors, 0 skipped
+- Overall score: **95/100**
+- Percentage: **95%**
 - Readiness: **Demo Ready**
-- Scoring model used: **Spring AI only** — metric 4 evaluated out of 20
-  (metric 5's 10 points redistributed); metric 5 marked *Optional Not
-  Implemented*. Total remains 100.
+- Scoring model used: **Dual framework** — metrics 4 and 5 evaluated
+  separately at 10 points each now that both providers are implemented.
+  The net −1 vs the prior run is the rubric's rescaling (the previous 19/20
+  becomes two independently scored 10-point metrics), not a regression:
+  functionality strictly increased (second provider + 18 new tests).
 
 ## 2. Repository and Technology Overview
 
@@ -26,7 +32,7 @@
 | Application / objective | Payment-fraud & dispute case investigation assistant producing advisory recommendations; final disposition always belongs to a human reviewer | `FraudCaseAgentApplication.java`, `README.md`, `AGENTS.md` |
 | Java / Spring Boot | Java 21 / Spring Boot 3.5.16 | `pom.xml` (`spring-boot-starter-parent` 3.5.16) |
 | Build tool | Maven (system `mvn`; no wrapper script present) | `pom.xml` |
-| AI framework | Spring AI only — `spring-ai-client-chat`, `spring-ai-anthropic`, `spring-ai-vector-store` pinned via `spring-ai-bom` | `pom.xml` (`spring-ai.version=1.1.8`); no LangChain4j dependency or import exists |
+| AI framework | Spring AI (`spring-ai-client-chat`, `spring-ai-anthropic`, `spring-ai-vector-store` via `spring-ai-bom`) **and** LangChain4j (`langchain4j`, `langchain4j-anthropic` 1.22.0) — two provider adapters behind one `FraudCaseProcessor` contract | `pom.xml` (`spring-ai.version=1.1.8`, `langchain4j.version=1.22.0`); `agent/springai/`, `agent/langchain4j/` |
 | Model / provider config | Anthropic `ChatModel` auto-configured by starter; credentials via env vars; deterministic `RulesFraudCaseAgent` is the default mode | `application.yml`, `application-example.yml`, `SpringAiModelGate` |
 | Database / persistence | Embedded H2 + Spring Data JPA; Flyway owns DDL (`V1`–`V5` migrations); Hibernate `ddl-auto=validate` | `src/main/resources/db/migration/`, `application.yml` |
 | Vector DB / embedding | `SyntheticPolicyVectorStore implements org.springframework.ai.vectorstore.VectorStore` backed by `DeterministicEmbeddingModel implements EmbeddingModel` — deterministic, in-repo, no external vector service required | `rag/SyntheticPolicyVectorStore.java`, `rag/DeterministicEmbeddingModel.java` |
@@ -34,14 +40,17 @@
 | MCP / external integration | None present | Repository scan |
 | Entry point | `com.example.fraudcase.FraudCaseAgentApplication` | `src/main/java/.../FraudCaseAgentApplication.java` |
 | Framework-neutral interfaces | `FraudCaseProcessor` (agent port), `PolicyRetriever`, `EvidenceTool`, `CaseConversationStore`, `AuditService` | `agent/common/FraudCaseProcessor.java`, `rag/`, `tools/`, `memory/` |
-| Configuration modes | `capstone.agent.mode=rules` (default, no credentials) / `=spring-ai` (requires `ChatModel` + Anthropic key). No `langchain4j` mode | `CapstoneProperties`, `application.yml`, `ProcessorSelector` |
+| Configuration modes | `capstone.processor-mode=rules` (default, no credentials) / `=spring-ai` / `=langchain4j`; each AI mode requires only its own provider key — the unselected provider is never required | `CapstoneProperties`, `application.yml`, `ProcessorSelector`, `LangChain4jAdapterConfig` |
 
 ## 3. Build and Test Results
 
 | Command | Result | Details |
 |---|---|---|
-| `mvn clean verify` | PASS | BUILD SUCCESS; 166 main + ~50 test source files compile clean; jar packaged |
-| Test suite | PASS | **Tests run: 413, Failures: 0, Errors: 0, Skipped: 0** |
+| `mvn clean verify` | PASS | BUILD SUCCESS; 166 main + ~53 test source files compile clean; jar packaged |
+| Test suite | PASS | **Tests run: 431, Failures: 0, Errors: 0, Skipped: 0** |
+| `LangChain4jFraudCaseAgentTest` | PASS | 9/9 — scripted `StubLc4jChatModel`: valid output, fenced JSON, empty/malformed rejection, foreign caseId, bounded tool loop, round bound, provider failure, missing-model gate |
+| `LangChain4jModeInvestigationTest` | PASS | 6/6 — real-context E2E in `langchain4j` mode: `LANGCHAIN4J` mode persisted, real tool traces, fallback on outage/malformed/foreign output, `humanReviewRequired=false` rejected |
+| `ProcessorSelectorTest` | PASS | 8/8 — three-mode selection; fail-fast per provider; unselected provider never required |
 | `Phase8EndToEndTest` | PASS | T01–T12 end-to-end regression pack, 14/14 |
 | `Phase9EvaluationTest` | PASS | Deterministic evaluation dataset E01–E18, 18/18, score-2 pass rate 100% (`target/evaluation-report.json`) |
 | `Phase9SpringAiEvaluationTest` | PASS | Scripted-model AI evaluations E20–E25, 6/6 (`target/evaluation-springai-report.json`) — no live provider required |
@@ -56,16 +65,16 @@
 | # | Metric | Maximum | Score | Status | Evaluator Comments | Evidence |
 |---|---|---:|---:|---|---|---|
 | 1 | BFS fraud and dispute use case | 10 | 10 | Implemented | Full fraud/dispute case study: masked synthetic intake (`CUST-••••`, `••••73` merchants), amount/timestamp/channel/device/claim facts, `NEW→UNDER_INVESTIGATION→READY_FOR_REVIEW→{ROUTED,CLOSED,INCOMPLETE}` lifecycle, all four recommendation enums + `DUPLICATE_PROCESSING`/`MERCHANT_DISPUTE`, separation of fraud (`FRAUD_INVESTIGATION`), dispute (`DISPUTE_OPERATIONS`), duplicate (`PAYMENT_OPERATIONS`) and manual review routing. Zero loan-underwriting concepts (repo-wide grep clean). | `domain/CaseState`, `CaseClassification`, `RecommendedRoute`, `IssueType`; `FraudCaseController` |
-| 2 | Architecture and maintainability | 12 | 12 | Implemented | Layered packages (`api/application/domain/tools/rag/memory/persistence/agent/ui/config/observability/evaluation`); `domain/` imports no AI/JPA types; provider code isolated behind `FraudCaseProcessor`; mode selected by `capstone.agent.mode`; single rules engine + single `RecommendationValidator` shared by both processors — no duplicated rules across adapters; Bean Validation + `GlobalExceptionHandler`; typed enums throughout | `FraudCaseProcessor`, `ProcessorSelector`, `RulesFraudCaseAgent`, `SpringAiFraudCaseAgent`, `RecommendationValidator` |
+| 2 | Architecture and maintainability | 12 | 12 | Implemented | Layered packages (`api/application/domain/tools/rag/memory/persistence/agent/ui/config/observability/evaluation`); `domain/` imports no AI/JPA types; provider code isolated behind `FraudCaseProcessor`; mode selected by `capstone.processor-mode`; single rules engine + single `RecommendationValidator` shared by both processors — no duplicated rules across adapters; Bean Validation + `GlobalExceptionHandler`; typed enums throughout | `FraudCaseProcessor`, `ProcessorSelector`, `RulesFraudCaseAgent`, `SpringAiFraudCaseAgent`, `RecommendationValidator` |
 | 3 | Fraud investigation workflow and deterministic tools | 15 | 13 | Implemented | Six deterministic, seed-stable evidence tools covering transaction lookup, device signals, geolocation/impossible-travel, merchant risk, prior disputes, and SLA calculation. Typed `ToolRequest`/`ToolResult` schemas; statuses `SUCCESS/NOT_FOUND/INVALID_REQUEST/UNAVAILABLE`; provenance + persisted `ToolTraceEntity`; tool failure → `INSUFFICIENT_EVIDENCE`/missing-info, never fabricated. **Deduction: no transaction-velocity calculation tool and no sanctions/PEP screening tool** (rubric example list); policy lookup is a retrieval pipeline, not an agent tool. | `tools/*Tool.java`, `Determinism`, `DeterministicToolSupport`, `ToolExecutionService`, `persistence/ToolTraceEntity` |
-| 4 | Spring AI implementation | 20 | 19 | Implemented | `ChatModel.call` with native `ToolCallback` allow-list loop (bounded iterations); prompt builders treat customer text/policy as untrusted data; structured output via `AiRecommendationOutput`/`AiFollowUpOutput` + `RecommendationValidator` — invalid output rejected, never persisted; `CaseChatMemoryRepository implements ChatMemoryRepository` keyed by caseId with bounded window; `VectorStore` + `EmbeddingModel` implementations with ingestion service; provider config externalized (`application.yml` + env); provider outage → deterministic fallback, review path unaffected. Minor deduction: token-usage metrics unavailable on the stub path; no advisor-based orchestration (custom orchestration used instead). | `SpringAiFraudCaseAgent`, `SpringAiFollowUpAgent`, `SpringAiToolAdapter`, `SpringAiPromptBuilder`, `SpringAiModelGate`, `SpringAiAdapterConfig` |
-| 5 | LangChain4j implementation | — | — | Optional Not Implemented | LangChain4j absent from `pom.xml` and all sources; its 10 points redistributed to metric 4 per the framework scoring rule | `pom.xml` dependency list |
+| 4 | Spring AI implementation | 10 | 9 | Implemented | `ChatModel.call` with native `ToolCallback` allow-list loop (bounded iterations); prompt builders treat customer text/policy as untrusted data; structured output via `AiRecommendationOutput`/`AiFollowUpOutput` + `RecommendationValidator` — invalid output rejected, never persisted; `CaseChatMemoryRepository implements ChatMemoryRepository` keyed by caseId with bounded window; `VectorStore` + `EmbeddingModel` implementations with ingestion service; provider config externalized (`application.yml` + env); provider outage → deterministic fallback, review path unaffected. Minor deduction (rescaled): token-usage metrics unavailable on the stub path; custom orchestration rather than advisor-based. | `SpringAiFraudCaseAgent`, `SpringAiFollowUpAgent`, `SpringAiToolAdapter`, `SpringAiModelGate`, `SpringAiAdapterConfig` |
+| 5 | LangChain4j implementation | 10 | 9 | Implemented | `LangChain4jFraudCaseAgent` + `LangChain4jFollowUpAgent` on `dev.langchain4j` `ChatModel`: `ToolSpecification`/`ToolExecutor` adapter over the same `CaseToolInvoker` (same six allow-listed tools, same case-scope + budget guards); bounded `ChatRequest` tool loop; same output DTOs + `ModelOutputMappers` gates; `Lc4jCaseChatMemoryStore` (read-only `ChatMemoryStore` over the shared case-scoped store) + `Lc4jConversationWindow` (`MessageWindowChatMemory`, `memoryId==caseId`); `AnthropicChatModel` bean gated on mode + env key; provider outage → identical `RULES_FALLBACK`/`SAFE_FALLBACK`. Live smoke verified: real `AnthropicChatModel` bean, provider `AuthenticationException` → deterministic fallback, type-only logging. Deduction: no dedicated lc4j RAG/injection suite (shared mappers enforce the same rules — spring-ai legs cover them); token-usage metrics same limitation. | `agent/langchain4j/*`, `memory/Lc4j*`, `LangChain4jAdapterConfig`, `LangChain4jFraudCaseAgentTest`, `LangChain4jModeInvestigationTest` |
 | 6 | RAG, embeddings, vector retrieval, and citations | 15 | 14 | Implemented | 9 synthetic policy docs (CNP dispute, duplicate, escalation, evidence, human-review, merchant-dispute, legacy); front-matter metadata (id/title/version/section/status/effectiveDate/owner); parsing + chunking (9 files → 35 passages); deterministic embeddings + `VectorStore` similarity search; configurable `capstone.retrieval.{enabled,topK=4,similarityThreshold=0.72}`; `Status.CURRENT`-only catalog excludes SUPERSEDED/WITHDRAWN; grounded citations persist to `PolicyCitationEntity` and render in UI; explicit abstention/no-match state (`UiPolicyAbstentionTest`, `PolicyContextStatus`). Deduction: rules-mode recommendations carry no citations by design (honest abstention — `// never faked`), so citation value appears only via the AI/retrieval path rather than every recommendation. | `rag/` (10 classes), `PolicyIngestionService`, `PolicyRetriever`, `PolicyRetrieverTest`, `SpringAiRagGroundingTest`, `templates/cases/citations.html` |
 | 7 | Structured output, memory, and human review | 8 | 8 | Implemented | Typed `FraudCaseRecommendation` + `AiRecommendationOutput`; fixed classification/risk enums; risk factors, evidenceIds, missingInformation, rationale, confidence, citations, ruleIds; schema validation before persistence (`RecommendationValidator`, `InvalidModelOutputException`); bounded memory `capstone.memory.max-messages=12`; strict caseId isolation; four human-review dispositions (`CONFIRM`, `ESCALATE`, `REROUTE`, `CLOSE`) with mandatory reason, server-side reviewer identity, immutable recommendation + separately stored disposition; no autonomous adverse action exists in code | `domain/FraudCaseRecommendation`, `ReviewService`, `ReviewDispositionType`, `CaseChatMemoryRepository`, `ReviewApiTest` |
 | 8 | Security, privacy, responsible AI, and auditability | 8 | 8 | Implemented | No secrets in repo (scan clean — `sk-`/key hits are validator rejection fixtures); synthetic-only data enforced by validators (`MaskedIdentifier`, `NoSensitiveContent`, `NoUnsafeMarkup`, `IsoCurrency`); customer text treated as data (injection cannot alter rules/state — verified live and in E16/E23); allow-listed read-only evidence tools (only write-capable path is audit append); CSRF on browser forms, escaped `th:text` only, no `th:utext` on untrusted data; actuator surface limited to `health,info,metrics` (`/actuator/env` → 404 verified); `X-Request-Id` correlation filter + MDC; append-only audit events with bounded metadata/hashes — no raw prompts, statements or secrets; model/framework/mode recorded in audit metadata; responsible-AI limitations documented in README/AGENTS | `api/validation/`, `CorrelationIdFilter`, `AuditEventAppender`, `SecurityConfig`, `application.yml` |
-| 9 | Testing, reliability, and observability | 8 | 8 | Implemented | 413 deterministic tests: tool unit tests, boundary/negative, controller/validation, structured-output parsing, RAG grounding/no-answer/retired-policy, tool+model+retrieval failure paths, memory isolation, `FraudCaseProcessor` contract tests, UI regression, prompt-injection, idempotent replay (optimistic locking + unique constraint + `clientReference` idempotency key), plus Phase 8 T01–T12 E2E pack and Phase 9 evaluation harness (24/24). Micrometer `fraudcase.*` metrics (cases, investigations, tools, ai, reviews, messages), correlation IDs, health indicator — verified live | `src/test/**` (50 files), `observability/`, `evaluation/`, surefire summary |
+| 9 | Testing, reliability, and observability | 8 | 8 | Implemented | 431 deterministic tests: tool unit tests, boundary/negative, controller/validation, structured-output parsing, RAG grounding/no-answer/retired-policy, tool+model+retrieval failure paths, memory isolation, `FraudCaseProcessor` contract tests, UI regression, prompt-injection, idempotent replay (optimistic locking + unique constraint + `clientReference` idempotency key), plus Phase 8 T01–T12 E2E pack and Phase 9 evaluation harness (24/24). Micrometer `fraudcase.*` metrics (cases, investigations, tools, ai, reviews, messages), correlation IDs, health indicator — verified live | `src/test/**` (50 files), `observability/`, `evaluation/`, surefire summary |
 | 10 | UI, documentation, and developer experience | 4 | 4 | Implemented | Thymeleaf workbench: worklist (`/ui/cases`), intake, investigation, recommendation, evidence, citations, human-review screens; explicit loading/success/failure/empty/abstention states; labelled controls, landmarks, focus, AA contrast, responsive; README + `docs/{architecture,TESTING,DEMO,phase-8..10}.md` with prerequisites/config/run/test/limitations; no underwriting terminology | `templates/`, `static/css/app.css`, `README.md`, `docs/` |
-|  | **Total** | **100** | **96** | | | |
+|  | **Total** | **100** | **95** | | | |
 
 ## 5. Framework Evaluation
 
@@ -99,13 +108,51 @@ Evidence: `agent/springai/*`, `SpringAiFraudCaseAgentTest`,
 
 ### 5.2 LangChain4j
 
-Not implemented — no dependency, imports or configuration. Scored as
-*Optional Not Implemented* with points redistributed to Spring AI per the
-rubric.
+Implemented on LangChain4j 1.22.0 behind the same `FraudCaseProcessor` /
+`FollowUpAgent` ports:
+
+- `dev.langchain4j.model.chat.ChatModel` resolved via `ObjectProvider`
+  (`LangChain4jModelGate` fails closed); `AnthropicChatModel` bean built
+  only when `processor-mode=langchain4j` AND
+  `capstone.langchain4j.anthropic.api-key` is set
+- `LangChain4jToolAdapter` exposes the identical six evidence tools as
+  `ToolSpecification` + `ToolExecutor`, delegating to the shared
+  `CaseToolInvoker` — case-scope, budget, timeout and sanitization rules
+  are the *same code* as the spring-ai path
+- Manual bounded tool-call loop (`ChatRequest` + `ToolExecutionRequest` →
+  `ToolExecutionResultMessage`), same `ai.max-rounds` bound
+- Output: `JsonOutputContract` strips fences + Jackson-maps the same
+  `AiRecommendationOutput`/`AiFollowUpOutput`, then the shared
+  `ModelOutputMappers` + `RecommendationValidator` enforce identical
+  rejection rules
+- Memory: `Lc4jCaseChatMemoryStore` (read-only `ChatMemoryStore` over
+  `CaseConversationStore` — writes stay on the locked append path) +
+  `Lc4jConversationWindow` (`MessageWindowChatMemory`, `memoryId==caseId`,
+  same `capstone.memory.max-messages` bound)
+- Live smoke (`capstone.processor-mode=langchain4j`, fake key): app
+  starts, real `AnthropicChatModel` issues a real call, provider
+  `AuthenticationException` → `RULES_FALLBACK` investigation and
+  `SAFE_FALLBACK` follow-up, exception type only in logs. Without a key
+  the mode fails startup — fail-closed verified
+- `RecommendationMode.LANGCHAIN4J` persisted + exposed so reviewers can
+  see which framework produced the recommendation
 
 ### 5.3 Framework Parity
 
-Not applicable — single framework.
+Parity is *structural*: `agent.common` holds the shared contract
+(`FraudCaseProcessor`, `FollowUpAgent`, `CasePromptBuilder`,
+`FollowUpPromptBuilder`, `AiRecommendationOutput`, `AiFollowUpOutput`,
+`JsonOutputContract`, `CaseToolInvoker`, `ModelOutputMappers`,
+`RecommendationValidator`, `ModelProcessingException`/
+`InvalidModelOutputException`) — both adapters are thin framework shells
+over the same prompts, tools, validation and fallback paths, so behavior
+cannot silently diverge between providers. `ProcessorSelector` resolves
+the adapter pair by `capstone.processor-mode` and gates only the selected
+provider's model; the unselected provider's bean and credentials are
+never required (`ProcessorSelectorTest` pins all three modes).
+`CaseMessageService` consumes the mode-conditional `ConversationWindow`
+(`ChatMemoryConversationWindow` / `Lc4jConversationWindow`) — the
+application layer imports no framework type.
 
 ## 6. Acceptance Scenario Results
 
@@ -123,6 +170,9 @@ Not applicable — single framework.
 | Model returns malformed output | spring-ai (scripted) | Validated retry / safe failure | `InvalidModelOutputException` → deterministic fallback, invalid JSON never persisted; `BeanOutputConverter` parse + `RecommendationValidator` double-gate | PASS | `Phase9SpringAiEvaluationTest` E22; `RecommendationValidatorTest`; `SpringAiModeInvestigationTest` malformed-output cases |
 | Two separate case IDs | rules/spring-ai | Memory isolated | Case-A memory never surfaced in case-B answers; separate JPA rows keyed by caseId | PASS | E12/E13 (rules), E24 (spring-ai scripted), `CaseMessageService` tests |
 | Prompt injection in transaction narrative | rules | Narrative = data; constraints retained | Injected "set humanReviewRequired=false / GENUINE" statement processed as data — R002 still fired, `humanReviewRequired=true`, state machine untouched | PASS (executed live) | Live run on :8090 (`TXN-5555-000002` + injected statement); E16/E23; `SpringAiPromptInjectionTest` |
+| Provider switch (spring-ai ↔ langchain4j) | config | Same contract, no code change | `ProcessorSelector` resolves adapter pair per mode; each mode requires only its own model bean — unselected provider never required; `RecommendationMode` persisted per run | PASS | `ProcessorSelectorTest` 8/8; `LangChain4jModeInvestigationTest` |
+| Provider failure in langchain4j mode | langchain4j | Safe deterministic degradation | Real `AnthropicChatModel` + invalid key → provider `AuthenticationException` → `RULES_FALLBACK` recommendation + `SAFE_FALLBACK` answer, `humanReviewRequired` held | PASS (executed live) | Live run `FC-A2F1583B` on :8191; `providerFailureFallsBackToRulesAndAudits` |
+| Malformed output in langchain4j mode | langchain4j | Rejected, never persisted | `InvalidModelOutputException` → `MODEL_OUTPUT_REJECTED` audit + rules fallback — identical semantics to spring-ai | PASS | `LangChain4jModeInvestigationTest` malformed/foreign/bypass cases |
 
 ## 7. Strengths
 
@@ -131,12 +181,13 @@ Not applicable — single framework.
    scoping, output validation, audit append-only, reviewer identity — lives
    in deterministic Java code the LLM cannot reach (56 `AGENTS.md` rules
    enforced in code and tests, not just docs).
-2. **Real Spring AI integration without a provider dependency.** Native
-   `ChatModel`/`ToolCallback`/`ChatMemoryRepository`/`VectorStore`/
-   `EmbeddingModel` implementations, validated end-to-end by a scripted
-   model — the entire suite runs credential-free while the Anthropic path
-   stays configuration-ready.
-3. **Verification depth.** 413 deterministic tests + T01–T12 E2E pack +
+2. **Dual-framework AI integration without a provider dependency.** Two
+   real adapters (Spring AI `ChatModel`/`ToolCallback`/`ChatMemoryRepository`
+   and LangChain4j `ChatModel`/`ToolExecutor`/`ChatMemoryStore`) behind one
+   `FraudCaseProcessor` port, sharing `agent.common` prompts/tools/validation
+   — configuration-only switching, each validated end-to-end by scripted
+   stub models while both Anthropic paths stay configuration-ready.
+3. **Verification depth.** 431 deterministic tests + T01–T12 E2E pack +
    a dedicated evaluation harness (24 scenarios, reports persisted to
    `target/`) + Micrometer metrics/correlation/health — every claim in this
    report is backed by executed evidence.
@@ -205,13 +256,16 @@ Not applicable — single framework.
 **Demo Ready.**
 
 The capstone is a complete, verifiable advisory fraud/dispute
-investigation system. Every scored claim was checked against source and
-executed evidence: `mvn clean verify` → 413/413 tests; T01–T12 E2E pack;
+investigation system — now with two interchangeable AI providers behind
+one contract. Every scored claim was checked against source and executed
+evidence: `mvn clean verify` → 431/431 tests; T01–T12 E2E pack;
 24/24 evaluation scenarios; live API verification of R001/R002/R003
-outcomes, prompt-injection resistance, correlation IDs, metrics and health
-on a running instance. The only rubric scenarios not implemented are two
-tool categories that were never built (velocity calculation, sanctions/PEP
-screening) — reported honestly rather than fabricated — and neither
-weakens any safety boundary, since both would route through the same
-deterministic, human-approved path as every other capability. With the two
-tool additions the project covers the full rubric scope.
+outcomes, prompt-injection resistance, correlation IDs, metrics, health
+and the langchain4j provider path (real `AnthropicChatModel` → graceful
+`RULES_FALLBACK`/`SAFE_FALLBACK`) on a running instance. The only rubric
+scenarios not implemented are two tool categories that were never built
+(velocity calculation, sanctions/PEP screening) — reported honestly
+rather than fabricated — and neither weakens any safety boundary, since
+both would route through the same deterministic, human-approved path as
+every other capability. With the two tool additions the project covers
+the full rubric scope.

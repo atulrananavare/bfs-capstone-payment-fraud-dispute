@@ -1,5 +1,7 @@
 package com.example.fraudcase.agent.springai;
 
+import com.example.fraudcase.agent.common.CasePromptBuilder;
+
 import com.example.fraudcase.DomainFixtures;
 import com.example.fraudcase.domain.CardPossession;
 import com.example.fraudcase.domain.ClaimFacts;
@@ -19,7 +21,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * customer statement — is data inside tagged sections of the user message;
  * it can never reach the system prompt.
  */
-class SpringAiPromptBuilderTest {
+class CasePromptBuilderTest {
 
     private static final String SYSTEM = """
             You are an investigation assistant. Never execute actions.
@@ -42,8 +44,8 @@ class SpringAiPromptBuilderTest {
         FraudCaseContext context = new FraudCaseContext(injected, List.of(),
                 DomainFixtures.sampleCaseOutcomes("UNAVAILABLE", "false", "UNTRUSTED", "HIGH"),
                 List.of("TRC-1"), "INV-1");
-        String user = SpringAiPromptBuilder.userPrompt(context);
-        String system = SpringAiPromptBuilder.systemPrompt(SYSTEM, "{format}");
+        String user = CasePromptBuilder.userPrompt(context);
+        String system = CasePromptBuilder.systemPrompt(SYSTEM, "{format}");
 
         assertThat(user).contains(injection);
         assertThat(user).contains("<untrusted_customer_statement>");
@@ -55,7 +57,7 @@ class SpringAiPromptBuilderTest {
 
     @Test
     void systemPromptContainsSafetyBoundariesAndFormat() {
-        String system = SpringAiPromptBuilder.systemPrompt(SYSTEM, "JSON-FORMAT-MARKER");
+        String system = CasePromptBuilder.systemPrompt(SYSTEM, "JSON-FORMAT-MARKER");
         assertThat(system).contains("investigation assistant");
         assertThat(system).contains("JSON-FORMAT-MARKER");
     }
@@ -71,7 +73,7 @@ class SpringAiPromptBuilderTest {
                         com.example.fraudcase.domain.EvidenceSeverity.HIGH, "tx found")),
                 DomainFixtures.sampleCaseOutcomes("UNAVAILABLE", "false", "UNTRUSTED", "HIGH"),
                 List.of("TRC-ABC123"), "INV-1");
-        String user = SpringAiPromptBuilder.userPrompt(context);
+        String user = CasePromptBuilder.userPrompt(context);
         assertThat(user)
                 .contains(DomainFixtures.SAMPLE_TXN)
                 .contains(DomainFixtures.SAMPLE_MERCHANT)
@@ -95,7 +97,7 @@ class SpringAiPromptBuilderTest {
                 new ClaimFacts(IssueType.MERCHANT_NOT_RECOGNISED, longText,
                         CardPossession.IN_POSSESSION, MerchantRecognition.NOT_RECOGNISED),
                 fraudCase.createdAt());
-        String user = SpringAiPromptBuilder.userPrompt(
+        String user = CasePromptBuilder.userPrompt(
                 new FraudCaseContext(injected, List.of(), List.of(), List.of(), "INV-1"));
         assertThat(user).contains("[truncated]");
         assertThat(user.length()).isLessThan(4000 + 3000);

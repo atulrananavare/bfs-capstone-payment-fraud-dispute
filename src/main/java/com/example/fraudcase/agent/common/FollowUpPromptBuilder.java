@@ -1,4 +1,4 @@
-package com.example.fraudcase.agent.springai;
+package com.example.fraudcase.agent.common;
 
 import com.example.fraudcase.domain.ClaimFacts;
 import com.example.fraudcase.domain.ConversationTurn;
@@ -13,7 +13,7 @@ import com.example.fraudcase.domain.TransactionFacts;
 
 import java.util.List;
 
-import static com.example.fraudcase.agent.springai.SpringAiPromptBuilder.bound;
+
 
 /**
  * Composes the trusted/untrusted split for conversational follow-up.
@@ -63,7 +63,7 @@ public final class FollowUpPromptBuilder {
         sb.append("</untrusted_case_facts>\n\n");
 
         sb.append("<untrusted_customer_statement>\n");
-        sb.append(bound(claim.customerStatement())).append('\n');
+        sb.append(CasePromptBuilder.bound(claim.customerStatement())).append('\n');
         sb.append("</untrusted_customer_statement>\n\n");
 
         sb.append("<untrusted_evidence_items>\n");
@@ -75,7 +75,7 @@ public final class FollowUpPromptBuilder {
                     .append(" | type=").append(e.type())
                     .append(" | severity=").append(e.severity())
                     .append(" | provenance=").append(e.provenance())
-                    .append(" | ").append(bound(e.valueSummary()))
+                    .append(" | ").append(CasePromptBuilder.bound(e.valueSummary()))
                     .append('\n');
         }
         sb.append("</untrusted_evidence_items>\n\n");
@@ -101,7 +101,7 @@ public final class FollowUpPromptBuilder {
             sb.append("confidence=").append(rec.confidence()).append('\n');
             sb.append("humanReviewRequired=").append(rec.humanReviewRequired()).append('\n');
             sb.append("missingInformation=").append(rec.missingInformation()).append('\n');
-            sb.append("rationale=").append(bound(rec.rationale())).append('\n');
+            sb.append("rationale=").append(CasePromptBuilder.bound(rec.rationale())).append('\n');
         }
         sb.append("</case_recommendation>\n\n");
 
@@ -117,7 +117,7 @@ public final class FollowUpPromptBuilder {
                     .append(" | section=").append(p.section())
                     .append(" | score=").append(String.format("%.3f", p.score()))
                     .append(" ---\n");
-            sb.append(bound(p.passage())).append('\n');
+            sb.append(CasePromptBuilder.bound(p.passage())).append('\n');
         }
         sb.append("</untrusted_policy_passages>\n\n");
 
@@ -146,7 +146,7 @@ public final class FollowUpPromptBuilder {
                     .append(" | score=").append(String.format("%.3f", cit.score()))
                     .append(" ---\n");
             if (cit.passage() != null) {
-                sb.append(bound(cit.passage())).append('\n');
+                sb.append(CasePromptBuilder.bound(cit.passage())).append('\n');
             }
         }
         sb.append("</validated_case_citations>\n\n");
@@ -157,13 +157,13 @@ public final class FollowUpPromptBuilder {
         }
         for (ConversationTurn turn : context.history()) {
             sb.append("<turn role=").append(turn.role()).append(">\n");
-            sb.append(bound(turn.text())).append('\n');
+            sb.append(CasePromptBuilder.bound(turn.text())).append('\n');
             sb.append("</turn>\n");
         }
         sb.append("</untrusted_conversation_history>\n\n");
 
         sb.append("<untrusted_follow_up_message>\n");
-        sb.append(bound(context.followUpText())).append('\n');
+        sb.append(CasePromptBuilder.bound(context.followUpText())).append('\n');
         sb.append("</untrusted_follow_up_message>\n\n");
 
         sb.append("Produce the structured answer now. Use only evidence ids ")

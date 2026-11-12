@@ -3,7 +3,7 @@ package com.example.fraudcase.application;
 import com.example.fraudcase.agent.common.FraudCaseProcessor;
 import com.example.fraudcase.agent.common.RecommendationValidator;
 import com.example.fraudcase.agent.rules.RulesFraudCaseAgent;
-import com.example.fraudcase.agent.springai.InvalidModelOutputException;
+import com.example.fraudcase.agent.common.InvalidModelOutputException;
 import com.example.fraudcase.config.CapstoneProperties;
 import com.example.fraudcase.domain.ActorType;
 import com.example.fraudcase.domain.AuditEventType;
@@ -248,17 +248,20 @@ public class InvestigationService {
                 fraudCase, allEvidence, outcomes, traceIds, investigationId);
 
         CapstoneProperties.ProcessorMode processorMode = properties.getProcessorMode();
-        RecommendationMode mode = processorMode == CapstoneProperties.ProcessorMode.SPRING_AI
-                ? RecommendationMode.SPRING_AI : RecommendationMode.RULES;
+        RecommendationMode mode = switch (processorMode) {
+            case SPRING_AI -> RecommendationMode.SPRING_AI;
+            case LANGCHAIN4J -> RecommendationMode.LANGCHAIN4J;
+            case RULES -> RecommendationMode.RULES;
+        };
 
         // Policy grounding is attempted only for the spring-ai processor —
         // the rules path must never depend on retrieval infrastructure.
-        if (mode == RecommendationMode.SPRING_AI) {
+        if (isAiMode(mode)) {
             context = retrievePolicy(context, caseId, fraudCase, outcomes);
         }
 
         FraudCaseRecommendation draft;
-        if (mode == RecommendationMode.SPRING_AI) {
+        if (isAiMode(mode)) {
             FraudCaseProcessor processor = processorSelector.processor();
             try {
                 draft = processor.analyze(context);
@@ -292,7 +295,7 @@ public class InvestigationService {
                     allowedCitationsFor(context), context.policyStatus());
             if (violations.isEmpty()) {
                 recommendation = merged;
-            } else if (mode == RecommendationMode.SPRING_AI) {
+            } else if (isAiMode(mode)) {
                 auditService.record(caseId, AuditEventType.MODEL_OUTPUT_REJECTED,
                         ActorType.SYSTEM, bounded(String.join("; ", violations)));
                 if (mentionsCitation(merged, violations)) {
@@ -311,7 +314,7 @@ public class InvestigationService {
         }
 
         // ---- Safe deterministic fallback (spring-ai failures/rejections) ----
-        if (recommendation == null && mode == RecommendationMode.SPRING_AI) {
+        if (recommendation == null && isAiMode(mode)) {
             auditService.record(caseId, AuditEventType.RULES_FALLBACK_STARTED,
                     ActorType.SYSTEM, "spring-ai unavailable or rejected");
             mode = RecommendationMode.RULES_FALLBACK;
@@ -522,6 +525,11 @@ public class InvestigationService {
                 .map(ToolTraceEntity::getTraceId).collect(Collectors.toSet());
     }
 
+    private static boolean isAiMode(RecommendationMode mode) {
+        return mode == RecommendationMode.SPRING_AI
+                || mode == RecommendationMode.LANGCHAIN4J;
+    }
+
     private Set<String> knownRuleIdsFor(RecommendationMode mode) {
         return switch (mode) {
             case RULES -> RulesFraudCaseAgent.RULE_IDS;
@@ -530,7 +538,7 @@ public class InvestigationService {
                 ids.add(LAST_RESORT_RULE_ID);
                 yield Set.copyOf(ids);
             }
-            case SPRING_AI -> Set.of();
+            case SPRING_AI, LANGCHAIN4J -> Set.of();
         };
     }
 

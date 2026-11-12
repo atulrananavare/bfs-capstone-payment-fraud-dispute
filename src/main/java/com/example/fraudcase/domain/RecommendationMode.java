@@ -7,6 +7,7 @@ public enum RecommendationMode {
 
     RULES,
     SPRING_AI,
-    /** Deterministic rules output persisted after a Spring AI failure/rejection. */
+    LANGCHAIN4J,
+    /** Deterministic rules output persisted after an AI failure/rejection. */
     RULES_FALLBACK
 }

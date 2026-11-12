@@ -1,6 +1,10 @@
 package com.example.fraudcase.application;
 
+import com.example.fraudcase.agent.langchain4j.LangChain4jFollowUpAgent;
+import com.example.fraudcase.agent.langchain4j.LangChain4jFraudCaseAgent;
+import com.example.fraudcase.agent.langchain4j.LangChain4jModelGate;
 import com.example.fraudcase.agent.rules.RulesFraudCaseAgent;
+import com.example.fraudcase.agent.springai.SpringAiFollowUpAgent;
 import com.example.fraudcase.agent.springai.SpringAiFraudCaseAgent;
 import com.example.fraudcase.agent.springai.SpringAiModelGate;
 import com.example.fraudcase.config.CapstoneProperties;
@@ -15,14 +19,20 @@ import static org.mockito.Mockito.when;
 
 /**
  * Configuration-driven processor selection and the fail-fast startup
- * contract for spring-ai mode without a configured model.
+ * contract for AI modes without a configured model. Each AI mode gates on
+ * its own provider only — an unselected provider is never required.
  */
 class ProcessorSelectorTest {
 
     private final RulesFraudCaseAgent rules = new RulesFraudCaseAgent();
-    private final SpringAiFraudCaseAgent ai = mock(SpringAiFraudCaseAgent.class);
+    private final SpringAiFraudCaseAgent springAi = mock(SpringAiFraudCaseAgent.class);
+    private final LangChain4jFraudCaseAgent lc4j = mock(LangChain4jFraudCaseAgent.class);
+    private final SpringAiFollowUpAgent springAiFollowUp =
+            mock(SpringAiFollowUpAgent.class);
+    private final LangChain4jFollowUpAgent lc4jFollowUp =
+            mock(LangChain4jFollowUpAgent.class);
 
-    private SpringAiModelGate gate(boolean available) {
+    private SpringAiModelGate springAiGate(boolean available) {
         @SuppressWarnings("unchecked")
         ObjectProvider<ChatModel> provider = mock(ObjectProvider.class);
         when(provider.getIfAvailable()).thenReturn(
@@ -30,41 +40,89 @@ class ProcessorSelectorTest {
         return new SpringAiModelGate(provider);
     }
 
-    private CapstoneProperties props(CapstoneProperties.ProcessorMode mode) {
+    private LangChain4jModelGate lc4jGate(boolean available) {
+        @SuppressWarnings("unchecked")
+        ObjectProvider<dev.langchain4j.model.chat.ChatModel> provider =
+                mock(ObjectProvider.class);
+        when(provider.getIfAvailable()).thenReturn(
+                available ? mock(dev.langchain4j.model.chat.ChatModel.class) : null);
+        return new LangChain4jModelGate(provider);
+    }
+
+    private ProcessorSelector selector(CapstoneProperties.ProcessorMode mode,
+                                       boolean springAiAvailable,
+                                       boolean lc4jAvailable) {
         CapstoneProperties p = new CapstoneProperties();
         p.setProcessorMode(mode);
-        return p;
+        return new ProcessorSelector(p, rules, springAi, lc4j,
+                springAiFollowUp, lc4jFollowUp,
+                springAiGate(springAiAvailable), lc4jGate(lc4jAvailable));
     }
 
     @Test
     void rulesModeSelectsRulesWithoutAnyModel() {
-        ProcessorSelector selector = new ProcessorSelector(
-                props(CapstoneProperties.ProcessorMode.RULES), rules, ai, gate(false));
-        assertThat(selector.processor()).isSameAs(rules);
+        ProcessorSelector s = selector(
+                CapstoneProperties.ProcessorMode.RULES, false, false);
+        assertThat(s.processor()).isSameAs(rules);
+        assertThat(s.conversationAvailable()).isFalse();
+        assertThatThrownBy(s::followUpAgent)
+                .isInstanceOf(ConversationUnavailableException.class);
     }
 
     @Test
-    void springAiModeWithModelSelectsAdapter() {
-        ProcessorSelector selector = new ProcessorSelector(
-                props(CapstoneProperties.ProcessorMode.SPRING_AI), rules, ai, gate(true));
-        assertThat(selector.processor()).isSameAs(ai);
+    void springAiModeWithModelSelectsAdapterWithoutLc4jModel() {
+        ProcessorSelector s = selector(
+                CapstoneProperties.ProcessorMode.SPRING_AI, true, false);
+        assertThat(s.processor()).isSameAs(springAi);
+        assertThat(s.followUpAgent()).isSameAs(springAiFollowUp);
+        assertThat(s.conversationAvailable()).isTrue();
     }
 
     @Test
     void springAiModeWithoutModelFailsFast() {
-        assertThatThrownBy(() -> new ProcessorSelector(
-                props(CapstoneProperties.ProcessorMode.SPRING_AI), rules, ai, gate(false)))
+        assertThatThrownBy(() -> selector(
+                CapstoneProperties.ProcessorMode.SPRING_AI, false, false))
                 .isInstanceOf(ProcessorModeUnavailableException.class)
                 .hasMessageContaining("ChatModel");
     }
 
     @Test
-    void onlyRulesAndSpringAiModesExist() {
+    void langChain4jModeWithModelSelectsAdapterWithoutSpringAiModel() {
+        // The unselected provider must never be required: spring-ai model
+        // absent, lc4j present → langchain4j mode still starts.
+        ProcessorSelector s = selector(
+                CapstoneProperties.ProcessorMode.LANGCHAIN4J, false, true);
+        assertThat(s.processor()).isSameAs(lc4j);
+        assertThat(s.followUpAgent()).isSameAs(lc4jFollowUp);
+        assertThat(s.conversationAvailable()).isTrue();
+    }
+
+    @Test
+    void langChain4jModeWithoutModelFailsFast() {
+        assertThatThrownBy(() -> selector(
+                CapstoneProperties.ProcessorMode.LANGCHAIN4J, false, false))
+                .isInstanceOf(ProcessorModeUnavailableException.class)
+                .hasMessageContaining("langchain4j");
+    }
+
+    @Test
+    void langChain4jModeIsNotAffectedBySpringAiModelPresence() {
+        // Smooth switching: spring-ai configured or not must not change the
+        // langchain4j selection outcome.
+        assertThat(selector(CapstoneProperties.ProcessorMode.LANGCHAIN4J,
+                true, true).processor()).isSameAs(lc4j);
+        assertThat(selector(CapstoneProperties.ProcessorMode.LANGCHAIN4J,
+                false, true).processor()).isSameAs(lc4j);
+    }
+
+    @Test
+    void allModesExist() {
         // An unlisted mode can never silently resolve — the enum is closed.
         assertThat(CapstoneProperties.ProcessorMode.values())
                 .containsExactlyInAnyOrder(
                         CapstoneProperties.ProcessorMode.RULES,
-                        CapstoneProperties.ProcessorMode.SPRING_AI);
+                        CapstoneProperties.ProcessorMode.SPRING_AI,
+                        CapstoneProperties.ProcessorMode.LANGCHAIN4J);
     }
 
     @Test

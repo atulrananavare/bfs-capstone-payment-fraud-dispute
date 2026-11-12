@@ -1,6 +1,10 @@
 package com.example.fraudcase.agent.springai;
 
+import com.example.fraudcase.agent.common.AiRecommendationOutput;
+import com.example.fraudcase.agent.common.CasePromptBuilder;
 import com.example.fraudcase.agent.common.FraudCaseProcessor;
+import com.example.fraudcase.agent.common.InvalidModelOutputException;
+import com.example.fraudcase.agent.common.ModelOutputMappers;
 import com.example.fraudcase.application.AuditService;
 import com.example.fraudcase.config.CapstoneProperties;
 import com.example.fraudcase.domain.ActorType;
@@ -126,7 +130,7 @@ public class SpringAiFraudCaseAgent implements FraudCaseProcessor {
                             + "|" + recommendation.recommendedRoute());
             metrics.recordAiDuration(sample, "investigation");
             return recommendation;
-        } catch (SpringAiProcessingException ex) {
+        } catch (SpringAiProcessingException | InvalidModelOutputException ex) {
             metrics.aiFailure("investigation");
             metrics.recordAiDuration(sample, "investigation");
             throw ex;
@@ -146,9 +150,9 @@ public class SpringAiFraudCaseAgent implements FraudCaseProcessor {
         BeanOutputConverter<AiRecommendationOutput> converter =
                 new BeanOutputConverter<>(AiRecommendationOutput.class);
 
-        String systemText = SpringAiPromptBuilder.systemPrompt(
+        String systemText = CasePromptBuilder.systemPrompt(
                 systemPromptText(), converter.getFormat());
-        String userText = SpringAiPromptBuilder.userPrompt(context);
+        String userText = CasePromptBuilder.userPrompt(context);
 
         List<ToolCallback> callbacks = toolAdapter.callbacksFor(
                 context.fraudCase(), context.investigationId());
@@ -196,97 +200,8 @@ public class SpringAiFraudCaseAgent implements FraudCaseProcessor {
         if (output == null) {
             throw new InvalidModelOutputException("model output did not convert");
         }
-        return toDomain(output, context);
-    }
-
-    private FraudCaseRecommendation toDomain(AiRecommendationOutput out,
-                                             FraudCaseContext context) {
-        if (out.caseId() != null && !out.caseId().isBlank()
-                && !out.caseId().equals(context.caseId())) {
-            // The model claimed a different case — its entire output is
-            // untrusted, not silently re-scoped.
-            throw new InvalidModelOutputException(
-                    "model output caseId does not match the investigated case");
-        }
-        List<PolicyCitation> citations =
-                resolveCitations(out.policyCitations(), context);
-        if (out.rationale() != null && PROMPT_LEAK_MARKERS.stream()
-                .anyMatch(out.rationale()::contains)) {
-            // Parroting system-prompt material is not a rationale.
-            throw new InvalidModelOutputException(
-                    "rationale contains system-prompt material");
-        }
-        CaseClassification classification = parseEnum(
-                CaseClassification.class, out.classification(), "classification");
-        RiskLevel risk = parseEnum(RiskLevel.class, out.riskLevel(), "riskLevel");
-        RecommendedRoute route = parseEnum(
-                RecommendedRoute.class, out.recommendedRoute(), "recommendedRoute");
-        double confidence = out.confidence() == null ? -1 : out.confidence();
-        boolean humanReview = out.humanReviewRequired() != null
-                && out.humanReviewRequired();
-
-        try {
-            return new FraudCaseRecommendation(
-                    context.caseId(), classification, risk, route,
-                    confidence, humanReview,
-                    bounded(out.evidenceIds()),
-                    citations,
-                    bounded(out.missingInformation()),
-                    List.of(), // ruleIds — the model never ran the rules engine
-                    bounded(out.toolTraceIds()),
-                    out.rationale() == null ? "" : out.rationale());
-        } catch (IllegalArgumentException | NullPointerException ex) {
-            // Domain contract violations — including requireNonNull on a
-            // missing mandatory field — are invalid output, not invocation
-            // failures.
-            throw new InvalidModelOutputException(
-                    "model output violates the recommendation contract: "
-                            + ex.getMessage(), ex);
-        }
-    }
-
-    /**
-     * Resolve model-supplied chunk ids against the passages actually
-     * retrieved for THIS investigation. Every citation field comes from the
-     * trusted {@link PolicyPassage}; an unknown or foreign chunk id means
-     * the model fabricated it, so the whole output is invalid.
-     */
-    private static List<PolicyCitation> resolveCitations(
-            List<String> citedChunkIds, FraudCaseContext context) {
-        if (citedChunkIds == null || citedChunkIds.isEmpty()) {
-            return List.of();
-        }
-        List<PolicyCitation> resolved = new ArrayList<>();
-        for (String chunkId : citedChunkIds) {
-            if (chunkId == null || chunkId.isBlank()) {
-                continue;
-            }
-            PolicyPassage passage = context.policyPassages().stream()
-                    .filter(p -> p.chunkId().equals(chunkId))
-                    .findFirst()
-                    .orElseThrow(() -> new InvalidModelOutputException(
-                            "model cited a policy passage that was not "
-                                    + "retrieved for this case: " + chunkId));
-            resolved.add(PolicyCitation.from(passage));
-        }
-        return List.copyOf(resolved);
-    }
-
-    private static <E extends Enum<E>> E parseEnum(
-            Class<E> type, String value, String field) {
-        try {
-            return value == null ? null : Enum.valueOf(type, value);
-        } catch (IllegalArgumentException ex) {
-            throw new InvalidModelOutputException(
-                    "unknown " + field + " value: " + value, ex);
-        }
-    }
-
-    private static List<String> bounded(List<String> values) {
-        if (values == null) {
-            return List.of();
-        }
-        return values.stream().filter(v -> v != null && !v.isBlank()).toList();
+        return ModelOutputMappers.toRecommendation(
+                output, context, PROMPT_LEAK_MARKERS);
     }
 
     private String systemPromptText() {
