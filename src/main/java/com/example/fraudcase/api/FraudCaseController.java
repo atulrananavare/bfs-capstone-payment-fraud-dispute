@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 
 import java.net.URI;
+import java.util.List;
 
 /**
  * Fraud-case intake and summary endpoints. The controller contains no
@@ -44,9 +45,20 @@ public class FraudCaseController {
                 created.analystId()));
     }
 
+    /** Read-only analyst worklist, newest first — masked summaries only. */
+    @GetMapping
+    public List<CaseSummaryResponse> listCases() {
+        return fraudCaseService.listCases().stream()
+                .map(FraudCaseController::toSummary)
+                .toList();
+    }
+
     @GetMapping("/{caseId}")
     public CaseSummaryResponse getCase(@PathVariable String caseId) {
-        FraudCase fraudCase = fraudCaseService.getCase(caseId);
+        return toSummary(fraudCaseService.getCase(caseId));
+    }
+
+    private static CaseSummaryResponse toSummary(FraudCase fraudCase) {
         return new CaseSummaryResponse(
                 fraudCase.caseId(),
                 fraudCase.state(),

@@ -162,13 +162,23 @@ payload, never raw sensitive values. `V2__policy_citation_passage.sql`
 `section_id`, `chunk_id`, `score`, `passage`) so every citation persists
 the exact verbatim passage it references.
 
-### Observability boundary
-Every investigation will carry a correlation ID through application →
-tools → retrieval → model. Tool name/status/duration/redacted summaries and
-retrieval scores are recorded; raw prompts/responses and sensitive values
-are not logged. Phase 1 exposes only `/actuator/health` with
-`show-details: never` — no database, provider or vector store is required
-for the app to be healthy at this stage.
+### Observability boundary (implemented — Phase 9)
+Every HTTP request carries `X-Request-Id` (`CorrelationIdFilter` → MDC →
+response header); `caseId` joins MDC inside workflow entry points, and the
+log pattern prints both — no payload text is ever in the correlation keys.
+`CaseMetrics` wraps Micrometer: `fraudcase.*` counters/timers for intake,
+investigation lifecycle (started/completed/failed + duration, tagged only
+by processor `mode`), per-tool invocations/failures/duration, AI
+requests/failures/latency, review submitted/rejected and message answers.
+Tag values are small fixed sets — never case/customer/transaction ids or
+user text. Structured lifecycle events log bounded metadata only; the
+`BeanOutputConverter` logger is OFF (it dumps raw model text on parse
+failure). Actuator exposes `health` (`show-details: never` +
+`ProcessorHealthIndicator`), `info` (static `info.*` metadata) and
+`metrics`; every other actuator endpoint stays unexposed. Spring AI's own
+`gen_ai.*` observations flow through the same registry; token usage is not
+recorded because the provider path returns no usage payload — nothing is
+fabricated.
 
 ### Human-review boundary (implemented — Phase 6)
 Recommendations are advisory; `humanReviewRequired=true` is enforced in the
@@ -186,3 +196,39 @@ gives idempotent replay. `ReviewDisposition` rows are immutable
 (`@PreUpdate`/`@PreRemove`), audited (`REVIEW_*`), and never imply a
 banking action — disposition is a workflow record only. `UNDER_REVIEW →
 INCOMPLETE` is the sole Phase 6 state-machine refinement.
+
+### Conversation-memory boundary (implemented — Phase 5)
+`caseId` from the request path is the only memory key — never a session,
+user or global key. `CaseChatMemoryRepository` holds a bounded window
+(`capstone.memory.max-messages`, default 12) backed by
+`CaseConversationStore`; the full record persists append-only via
+`CaseMessageEntity` rows ordered by a case-local sequence number assigned
+under a per-case lock. Persisted text stays untrusted data forever — it
+can never become instructions, change scope or lift review obligations.
+Follow-up answers go through `SpringAiFollowUpAgent`; wrong-case output,
+foreign evidence/citation ids, action claims and
+`humanReviewRequired=false` are rejected and never persisted — the
+deterministic `SAFE_FALLBACK` answer is stored instead. Conversation
+requires spring-ai mode; rules mode returns `CONVERSATION_UNAVAILABLE`
+(409).
+
+### UI boundary (implemented — Phase 7, extended Phase 10)
+Thymeleaf analyst workbench under `/ui/**`: case list (`/ui/cases`),
+intake, case summary redirect, investigation, recommendation, evidence,
+policy citations + open-passage view, human review. UI controllers call
+application services only — no repository writes, no business logic, no
+state mutation. Browser form POSTs carry CSRF tokens (the JSON API stays
+exempt); all untrusted text renders via escaped `th:text` (no `th:utext`);
+missing evidence/policy/answers render as explicit empty/abstention
+states, never fabricated items. Accessibility: labelled controls, landmark
+structure, visible focus, AA contrast, responsive layout.
+
+### Evaluation boundary (implemented — Phase 9)
+`evaluation/` is a deterministic scoring harness, not an LLM judge:
+`CaseEvaluationRunner` executes scenarios E01–E18 through the real
+services and repositories, each scoring 0/1/2 on a documented scale with
+named checks and evidence strings; `EvaluationReport` aggregates totals
+and per-category pass rates. `Phase9EvaluationTest` runs the dataset on
+the rules pipeline (writes `target/evaluation-report.json`);
+`Phase9SpringAiEvaluationTest` covers the AI dimension E20–E25 with the
+scripted `StubChatModel`. Nothing external is required.

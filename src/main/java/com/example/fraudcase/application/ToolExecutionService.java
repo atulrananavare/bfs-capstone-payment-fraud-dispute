@@ -4,12 +4,14 @@ import com.example.fraudcase.domain.ActorType;
 import com.example.fraudcase.domain.AuditEventType;
 import com.example.fraudcase.domain.ToolOutcome;
 import com.example.fraudcase.domain.ToolStatus;
+import com.example.fraudcase.observability.CaseMetrics;
 import com.example.fraudcase.persistence.ToolTraceEntity;
 import com.example.fraudcase.persistence.ToolTraceRepository;
 import com.example.fraudcase.tools.Determinism;
 import com.example.fraudcase.tools.EvidenceTool;
 import com.example.fraudcase.tools.ToolRequest;
 import com.example.fraudcase.tools.ToolResult;
+import io.micrometer.core.instrument.Timer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -37,12 +39,15 @@ public class ToolExecutionService {
     private final ToolTraceRepository traceRepository;
     private final AuditService auditService;
     private final Clock clock;
+    private final CaseMetrics metrics;
 
     public ToolExecutionService(ToolTraceRepository traceRepository,
-                                AuditService auditService, Clock clock) {
+                                AuditService auditService, Clock clock,
+                                CaseMetrics metrics) {
         this.traceRepository = traceRepository;
         this.auditService = auditService;
         this.clock = clock;
+        this.metrics = metrics;
     }
 
     /**
@@ -56,6 +61,8 @@ public class ToolExecutionService {
     public <RQ extends ToolRequest, RS extends ToolResult> Execution run(
             EvidenceTool<RQ, RS> tool, RQ request, String caseId, String investigationId) {
         long started = System.nanoTime();
+        Timer.Sample sample = metrics.start();
+        metrics.toolInvoked(tool.name());
         RS result = null;
         ToolStatus status;
         try {
@@ -65,6 +72,11 @@ public class ToolExecutionService {
             status = ToolStatus.UNAVAILABLE;
             log.warn("Tool {} failed for case {} investigation {}: {}",
                     tool.name(), caseId, investigationId, ex.getMessage());
+        }
+        metrics.recordToolDuration(sample, tool.name());
+        if (status != ToolStatus.SUCCESS && status != ToolStatus.NOT_FOUND) {
+            metrics.toolFailed(tool.name());
+            log.warn("TOOL_FAILED caseId={} tool={} status={}", caseId, tool.name(), status);
         }
         long durationMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started);
 

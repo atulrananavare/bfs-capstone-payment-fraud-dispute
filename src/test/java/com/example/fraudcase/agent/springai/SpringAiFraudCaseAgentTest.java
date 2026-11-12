@@ -1,5 +1,6 @@
 package com.example.fraudcase.agent.springai;
 
+import com.example.fraudcase.TestFixtures;
 import com.example.fraudcase.DomainFixtures;
 import com.example.fraudcase.application.AuditService;
 import com.example.fraudcase.application.EvidenceRecorder;
@@ -68,7 +69,7 @@ class SpringAiFraudCaseAgentTest {
         auditService = mock(AuditService.class);
         traceRepository = mock(ToolTraceRepository.class);
         ToolExecutionService toolExecution =
-                new ToolExecutionService(traceRepository, auditService, clock);
+                new ToolExecutionService(traceRepository, auditService, clock, TestFixtures.testMetrics());
         EvidenceRecorder evidenceRecorder =
                 new EvidenceRecorder(mock(EvidenceItemRepository.class));
         SpringAiToolAdapter adapter = new SpringAiToolAdapter(
@@ -87,7 +88,7 @@ class SpringAiFraudCaseAgentTest {
 
         agent = new SpringAiFraudCaseAgent(provider, ToolCallingManager.builder().build(),
                 adapter, auditService, properties, new ClassPathResource(
-                "prompts/fraud-case-system-prompt.st"));
+                "prompts/fraud-case-system-prompt.st"), TestFixtures.testMetrics());
 
         FraudCase fraudCase = DomainFixtures.fraudCase(
                 IssueType.MERCHANT_NOT_RECOGNISED, MerchantRecognition.NOT_RECOGNISED);
@@ -143,7 +144,7 @@ class SpringAiFraudCaseAgentTest {
         SpringAiFraudCaseAgent noModel = new SpringAiFraudCaseAgent(
                 empty, ToolCallingManager.builder().build(), mock(SpringAiToolAdapter.class),
                 auditService, new CapstoneProperties(), new ClassPathResource(
-                "prompts/fraud-case-system-prompt.st"));
+                "prompts/fraud-case-system-prompt.st"), TestFixtures.testMetrics());
         assertThatThrownBy(() -> noModel.analyze(context))
                 .isInstanceOf(SpringAiProcessingException.class)
                 .hasMessageContaining("no ChatModel");

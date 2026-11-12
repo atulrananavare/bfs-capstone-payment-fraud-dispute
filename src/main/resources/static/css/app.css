@@ -350,3 +350,9 @@ select:focus-visible, textarea:focus-visible, [tabindex]:focus-visible {
     .nav-list .is-current a { border-left: 0; border-bottom-color: var(--blue); }
     .workspace { padding: 1rem; }
 }
+
+/* ---- case list (Phase 10 worklist) ---- */
+.case-list { list-style: none; margin: 0; padding: 0; }
+.case-list li { display: flex; gap: 0.75rem; align-items: baseline; flex-wrap: wrap; padding: 0.55rem 0; border-bottom: 1px solid var(--line); }
+.case-list li:last-child { border-bottom: 0; }
+.case-meta { color: var(--muted); font-size: 0.9rem; }

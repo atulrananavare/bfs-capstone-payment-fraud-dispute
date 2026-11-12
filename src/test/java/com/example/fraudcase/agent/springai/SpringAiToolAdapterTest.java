@@ -1,5 +1,6 @@
 package com.example.fraudcase.agent.springai;
 
+import com.example.fraudcase.TestFixtures;
 import com.example.fraudcase.DomainFixtures;
 import com.example.fraudcase.application.AuditService;
 import com.example.fraudcase.application.EvidenceRecorder;
@@ -47,7 +48,7 @@ class SpringAiToolAdapterTest {
         properties = new CapstoneProperties();
         clock = Clock.fixed(Instant.parse("2026-11-11T12:00:00Z"), ZoneOffset.UTC);
         toolExecution = new ToolExecutionService(
-                mock(ToolTraceRepository.class), mock(AuditService.class), clock);
+                mock(ToolTraceRepository.class), mock(AuditService.class), clock, TestFixtures.testMetrics());
         evidenceRecorder = new EvidenceRecorder(mock(EvidenceItemRepository.class));
         fraudCase = DomainFixtures.fraudCase(
                 IssueType.MERCHANT_NOT_RECOGNISED, MerchantRecognition.NOT_RECOGNISED);

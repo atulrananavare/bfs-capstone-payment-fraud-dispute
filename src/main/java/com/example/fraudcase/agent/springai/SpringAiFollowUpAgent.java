@@ -10,6 +10,8 @@ import com.example.fraudcase.domain.FollowUpAnswer;
 import com.example.fraudcase.domain.FollowUpContext;
 import com.example.fraudcase.domain.PolicyCitation;
 import com.example.fraudcase.domain.PolicyPassage;
+import com.example.fraudcase.observability.CaseMetrics;
+import io.micrometer.core.instrument.Timer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.messages.AssistantMessage;
@@ -79,6 +81,7 @@ public class SpringAiFollowUpAgent {
     private final AuditService auditService;
     private final CapstoneProperties properties;
     private final Resource systemPromptResource;
+    private final CaseMetrics metrics;
 
     public SpringAiFollowUpAgent(ObjectProvider<ChatModel> chatModel,
                                  ToolCallingManager toolCallingManager,
@@ -86,18 +89,24 @@ public class SpringAiFollowUpAgent {
                                  AuditService auditService,
                                  CapstoneProperties properties,
                                  @Value("classpath:prompts/follow-up-system-prompt.st")
-                                 Resource systemPromptResource) {
+                                 Resource systemPromptResource,
+                                 CaseMetrics metrics) {
         this.chatModel = chatModel;
         this.toolCallingManager = toolCallingManager;
         this.toolAdapter = toolAdapter;
         this.auditService = auditService;
         this.properties = properties;
         this.systemPromptResource = systemPromptResource;
+        this.metrics = metrics;
     }
 
     public FollowUpAnswer answer(FollowUpContext context) {
+        Timer.Sample sample = metrics.start();
+        metrics.aiRequest("followup");
         ChatModel model = chatModel.getIfAvailable();
         if (model == null) {
+            metrics.aiFailure("followup");
+            metrics.recordAiDuration(sample, "followup");
             throw new SpringAiProcessingException(
                     "no ChatModel is configured for spring-ai mode");
         }
@@ -111,12 +120,17 @@ public class SpringAiFollowUpAgent {
                     ActorType.SYSTEM, "follow-up|" + context.correlationId()
                             + "|evidence=" + result.evidenceIds().size()
                             + "|citations=" + result.policyCitations().size());
+            metrics.recordAiDuration(sample, "followup");
             return result;
         } catch (SpringAiProcessingException ex) {
+            metrics.aiFailure("followup");
+            metrics.recordAiDuration(sample, "followup");
             throw ex;
         } catch (RuntimeException ex) {
+            metrics.aiFailure("followup");
+            metrics.recordAiDuration(sample, "followup");
             // Provider/network/SDK failures — log the type only.
-            log.warn("Spring AI follow-up failed for case {} ({})",
+            log.warn("AI_REQUEST_FAILED caseId={} operation=followup type={}",
                     caseId, ex.getClass().getSimpleName());
             throw new SpringAiProcessingException(
                     "model invocation failed: " + ex.getClass().getSimpleName(), ex);

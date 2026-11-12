@@ -1,5 +1,6 @@
 package com.example.fraudcase.agent.springai;
 
+import com.example.fraudcase.TestFixtures;
 import com.example.fraudcase.DomainFixtures;
 import com.example.fraudcase.application.AuditService;
 import com.example.fraudcase.application.EvidenceRecorder;
@@ -69,7 +70,7 @@ class SpringAiRagGroundingTest {
         AuditService auditService = mock(AuditService.class);
         ToolTraceRepository traceRepository = mock(ToolTraceRepository.class);
         ToolExecutionService toolExecution =
-                new ToolExecutionService(traceRepository, auditService, clock);
+                new ToolExecutionService(traceRepository, auditService, clock, TestFixtures.testMetrics());
         SpringAiToolAdapter adapter = new SpringAiToolAdapter(
                 new TransactionDetailsTool(properties, clock),
                 new DeviceSignalsTool(properties, clock),
@@ -87,7 +88,7 @@ class SpringAiRagGroundingTest {
         agent = new SpringAiFraudCaseAgent(provider,
                 ToolCallingManager.builder().build(), adapter, auditService,
                 properties, new ClassPathResource(
-                        "prompts/fraud-case-system-prompt.st"));
+                        "prompts/fraud-case-system-prompt.st"), TestFixtures.testMetrics());
     }
 
     private FraudCaseContext contextWith(List<PolicyPassage> passages,

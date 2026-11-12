@@ -8,6 +8,8 @@ import com.example.fraudcase.domain.RecommendedRoute;
 import com.example.fraudcase.domain.FraudCase;
 import com.example.fraudcase.domain.ReviewDispositionType;
 import com.example.fraudcase.domain.ReviewerPrincipal;
+import com.example.fraudcase.observability.CaseMetrics;
+import com.example.fraudcase.observability.CorrelationIdFilter;
 import com.example.fraudcase.persistence.EvidenceItemRepository;
 import com.example.fraudcase.persistence.FraudCaseStore;
 import com.example.fraudcase.persistence.PolicyCitationRepository;
@@ -15,6 +17,9 @@ import com.example.fraudcase.persistence.RecommendationEntity;
 import com.example.fraudcase.persistence.RecommendationRepository;
 import com.example.fraudcase.persistence.ReviewDispositionEntity;
 import com.example.fraudcase.persistence.ReviewDispositionRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.slf4j.MDC;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.stereotype.Service;
@@ -57,6 +62,8 @@ public class ReviewService {
 
     private static final int AUDIT_DETAIL_MAX = 200;
 
+    private static final Logger log = LoggerFactory.getLogger(ReviewService.class);
+
     private final FraudCaseStore caseStore;
     private final RecommendationRepository recommendationRepository;
     private final ReviewDispositionRepository reviewRepository;
@@ -65,6 +72,7 @@ public class ReviewService {
     private final ReviewerIdentityProvider identityProvider;
     private final AuditService auditService;
     private final Clock clock;
+    private final CaseMetrics metrics;
 
     public ReviewService(FraudCaseStore caseStore,
                          RecommendationRepository recommendationRepository,
@@ -73,7 +81,8 @@ public class ReviewService {
                          PolicyCitationRepository citationRepository,
                          ReviewerIdentityProvider identityProvider,
                          AuditService auditService,
-                         Clock clock) {
+                         Clock clock,
+                         CaseMetrics metrics) {
         this.caseStore = caseStore;
         this.recommendationRepository = recommendationRepository;
         this.reviewRepository = reviewRepository;
@@ -82,6 +91,7 @@ public class ReviewService {
         this.identityProvider = identityProvider;
         this.auditService = auditService;
         this.clock = clock;
+        this.metrics = metrics;
     }
 
     public record ReviewResult(ReviewDispositionEntity disposition,
@@ -97,6 +107,28 @@ public class ReviewService {
             StaleRecommendationException.class,
             ReviewValidationException.class})
     public ReviewResult submit(String caseId, ReviewRequest request) {
+        MDC.put(CorrelationIdFilter.MDC_CASE_ID, caseId);
+        try {
+            return doSubmit(caseId, request);
+        } catch (RuntimeException ex) {
+            String reason = ex instanceof ReviewAuthorizationException ? "forbidden"
+                    : ex instanceof StaleRecommendationException ? "stale"
+                    : ex instanceof ReviewNotPermittedException ? "not_permitted"
+                    : ex instanceof ReviewValidationException ? "validation"
+                    : ex instanceof ReviewConflictException ? "conflict"
+                    : ex instanceof CaseNotFoundException
+                    || ex instanceof RecommendationNotFoundException ? "not_found"
+                    : "unexpected";
+            metrics.reviewRejected(reason);
+            log.warn("REVIEW_REJECTED caseId={} reason={} type={}",
+                    caseId, reason, ex.getClass().getSimpleName());
+            throw ex;
+        } finally {
+            MDC.remove(CorrelationIdFilter.MDC_CASE_ID);
+        }
+    }
+
+    private ReviewResult doSubmit(String caseId, ReviewRequest request) {
         FraudCase fraudCase = caseStore.findById(caseId)
                 .orElseThrow(() -> new CaseNotFoundException(caseId));
         ReviewerPrincipal principal = identityProvider.resolve();
@@ -196,6 +228,9 @@ public class ReviewService {
                             ? recommendation.getRoute() : request.targetRoute())));
             auditService.record(caseId, AuditEventType.CASE_STATE_CHANGED,
                     ActorType.REVIEWER, target.name());
+            metrics.reviewSubmitted(request.disposition().name());
+            log.info("REVIEW_SUBMITTED caseId={} disposition={} resultingState={}",
+                    caseId, request.disposition(), target);
             return new ReviewResult(entity, target, false);
         } catch (ObjectOptimisticLockingFailureException
                  | DataIntegrityViolationException ex) {

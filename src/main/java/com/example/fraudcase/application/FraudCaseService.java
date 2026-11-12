@@ -7,12 +7,16 @@ import com.example.fraudcase.domain.ClaimFacts;
 import com.example.fraudcase.domain.CustomerFacts;
 import com.example.fraudcase.domain.FraudCase;
 import com.example.fraudcase.domain.TransactionFacts;
+import com.example.fraudcase.observability.CaseMetrics;
 import com.example.fraudcase.persistence.FraudCaseStore;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Clock;
 import java.time.OffsetDateTime;
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -34,14 +38,19 @@ public class FraudCaseService {
 
     private static final int CASE_ID_SUFFIX_LENGTH = 8;
 
+    private static final Logger log = LoggerFactory.getLogger(FraudCaseService.class);
+
     private final FraudCaseStore store;
     private final AuditService auditService;
     private final Clock clock;
+    private final CaseMetrics metrics;
 
-    public FraudCaseService(FraudCaseStore store, AuditService auditService, Clock clock) {
+    public FraudCaseService(FraudCaseStore store, AuditService auditService,
+                            Clock clock, CaseMetrics metrics) {
         this.store = store;
         this.auditService = auditService;
         this.clock = clock;
+        this.metrics = metrics;
     }
 
     @Transactional
@@ -72,12 +81,19 @@ public class FraudCaseService {
         auditService.record(saved.caseId(), AuditEventType.CASE_CREATED,
                 ActorType.ANALYST,
                 "channel=" + saved.reportChannel() + "|status=" + saved.state());
+        metrics.caseCreated();
+        log.info("CASE_CREATED caseId={} channel={}", saved.caseId(), saved.reportChannel());
         return saved;
     }
 
     public FraudCase getCase(String caseId) {
         return store.findById(caseId)
                 .orElseThrow(() -> new CaseNotFoundException(caseId));
+    }
+
+    /** Read-only analyst worklist, newest first. */
+    public List<FraudCase> listCases() {
+        return store.findAllRecent();
     }
 
     private String generateCaseId() {

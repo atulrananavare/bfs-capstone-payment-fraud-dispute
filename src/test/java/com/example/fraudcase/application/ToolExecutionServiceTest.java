@@ -1,5 +1,6 @@
 package com.example.fraudcase.application;
 
+import com.example.fraudcase.TestFixtures;
 import com.example.fraudcase.domain.AuditEventType;
 import com.example.fraudcase.domain.EvidenceItem;
 import com.example.fraudcase.domain.EvidenceProvenance;
@@ -79,7 +80,7 @@ class ToolExecutionServiceTest {
     void setUp() {
         traces = mock(ToolTraceRepository.class);
         audit = mock(AuditService.class);
-        service = new ToolExecutionService(traces, audit, Clock.systemUTC());
+        service = new ToolExecutionService(traces, audit, Clock.systemUTC(), TestFixtures.testMetrics());
         tool = mock(EvidenceTool.class);
         when(tool.name()).thenReturn("fakeTool");
         when(tool.origin()).thenReturn(EvidenceProvenance.DEVICE_TOOL);

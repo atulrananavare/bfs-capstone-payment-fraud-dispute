@@ -33,6 +33,8 @@ import com.example.fraudcase.persistence.RecommendationEntity;
 import com.example.fraudcase.persistence.RecommendationRepository;
 import com.example.fraudcase.persistence.ToolTraceEntity;
 import com.example.fraudcase.persistence.ToolTraceRepository;
+import com.example.fraudcase.observability.CaseMetrics;
+import com.example.fraudcase.observability.CorrelationIdFilter;
 import com.example.fraudcase.rag.PolicyQueryBuilder;
 import com.example.fraudcase.rag.PolicyRetrievalOutcome;
 import com.example.fraudcase.rag.PolicyRetriever;
@@ -44,6 +46,10 @@ import com.example.fraudcase.tools.MerchantRiskProfileTool;
 import com.example.fraudcase.tools.PriorDisputesTool;
 import com.example.fraudcase.tools.ToolResult;
 import com.example.fraudcase.tools.TransactionDetailsTool;
+import io.micrometer.core.instrument.Timer;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.slf4j.MDC;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -83,6 +89,8 @@ public class InvestigationService {
 
     private static final int AUDIT_REASON_MAX = 200;
 
+    private static final Logger log = LoggerFactory.getLogger(InvestigationService.class);
+
     private final FraudCaseStore caseStore;
     private final EvidenceItemRepository evidenceRepository;
     private final ToolTraceRepository traceRepository;
@@ -104,6 +112,7 @@ public class InvestigationService {
     private final PriorDisputesTool priorDisputesTool;
     private final CaseSlaTool slaTool;
     private final ObjectProvider<PolicyRetriever> policyRetriever;
+    private final CaseMetrics metrics;
 
     public InvestigationService(
             FraudCaseStore caseStore,
@@ -125,7 +134,8 @@ public class InvestigationService {
             MerchantRiskProfileTool merchantTool,
             PriorDisputesTool priorDisputesTool,
             CaseSlaTool slaTool,
-            ObjectProvider<PolicyRetriever> policyRetriever) {
+            ObjectProvider<PolicyRetriever> policyRetriever,
+            CaseMetrics metrics) {
         this.caseStore = caseStore;
         this.evidenceRepository = evidenceRepository;
         this.traceRepository = traceRepository;
@@ -146,6 +156,7 @@ public class InvestigationService {
         this.priorDisputesTool = priorDisputesTool;
         this.slaTool = slaTool;
         this.policyRetriever = policyRetriever;
+        this.metrics = metrics;
     }
 
     public record InvestigationResult(
@@ -160,6 +171,28 @@ public class InvestigationService {
 
     @Transactional(noRollbackFor = RecommendationValidationException.class)
     public InvestigationResult investigate(String caseId) {
+        Timer.Sample sample = metrics.start();
+        metrics.investigationStarted();
+        MDC.put(CorrelationIdFilter.MDC_CASE_ID, caseId);
+        log.info("INVESTIGATION_STARTED caseId={}", caseId);
+        try {
+            return doInvestigate(caseId, sample);
+        } catch (RuntimeException ex) {
+            String reason = ex instanceof InvestigationNotPermittedException ? "not_permitted"
+                    : ex instanceof RecommendationValidationException ? "validation"
+                    : ex instanceof CaseNotFoundException ? "case_not_found"
+                    : "unexpected";
+            metrics.investigationFailed(reason);
+            metrics.recordInvestigationDuration(sample, "failed");
+            log.warn("INVESTIGATION_FAILED caseId={} reason={} type={}",
+                    caseId, reason, ex.getClass().getSimpleName());
+            throw ex;
+        } finally {
+            MDC.remove(CorrelationIdFilter.MDC_CASE_ID);
+        }
+    }
+
+    private InvestigationResult doInvestigate(String caseId, Timer.Sample sample) {
         FraudCase fraudCase = caseStore.findById(caseId)
                 .orElseThrow(() -> new CaseNotFoundException(caseId));
 
@@ -357,6 +390,12 @@ public class InvestigationService {
         auditService.record(caseId, AuditEventType.CASE_STATE_CHANGED,
                 ActorType.SYSTEM, target.name());
 
+        metrics.investigationCompleted(mode.name());
+        metrics.recordInvestigationDuration(sample, mode.name());
+        log.info("INVESTIGATION_COMPLETED caseId={} investigationId={} mode={} "
+                        + "classification={} route={} tools={}",
+                caseId, investigationId, mode, recommendation.classification(),
+                recommendation.recommendedRoute(), outcomes.size());
         return new InvestigationResult(investigationId, fraudCase, recommendation,
                 mode, outcomes.size(), allEvidence.size(), List.copyOf(outcomes));
     }

@@ -73,6 +73,13 @@ public class CaseIntakeUiController {
                         "#", "Not available", false, false)));
     }
 
+    /** Analyst worklist — read-only case index, newest first. */
+    @GetMapping
+    public String caseList(Model model) {
+        model.addAttribute("cases", fraudCaseService.listCases());
+        return "cases/list";
+    }
+
     @GetMapping("/new")
     public String intakeForm(Model model) {
         if (!model.containsAttribute("intakeForm")) {

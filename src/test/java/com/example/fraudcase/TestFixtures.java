@@ -11,6 +11,8 @@ import com.example.fraudcase.domain.MerchantRecognition;
 import com.example.fraudcase.domain.ReportChannel;
 import com.example.fraudcase.domain.TransactionChannel;
 import com.example.fraudcase.domain.TransactionStatus;
+import com.example.fraudcase.observability.CaseMetrics;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
@@ -75,5 +77,10 @@ public final class TestFixtures {
                   }
                 }
                 """;
+    }
+
+    /** In-memory meter registry for service-level unit tests. */
+    public static CaseMetrics testMetrics() {
+        return new CaseMetrics(new SimpleMeterRegistry());
     }
 }

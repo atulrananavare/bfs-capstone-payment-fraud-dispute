@@ -54,11 +54,18 @@ Java level: **21** (matches the installed JDK; no upgrade performed).
 ## Build / Test / Run
 
 ```bash
-# compile + run all tests (Phase 1 + Phase 2)
+# clean build + full test suite (410+ tests incl. T01–T12, security,
+# evaluation and observability)
 mvn clean verify
 
 # tests only
 mvn test
+
+# deterministic evaluation dataset only (E01–E18)
+mvn test -Dtest=Phase9EvaluationTest
+
+# spring-ai evaluation leg only (scripted model, E20–E25)
+mvn test -Dtest=Phase9SpringAiEvaluationTest
 
 # run locally in rules mode (no credentials needed)
 mvn spring-boot:run
@@ -75,6 +82,8 @@ Then:
 
 - `GET http://localhost:8080/actuator/health` → `{"status":"UP"}`
 - `POST http://localhost:8080/api/cases` → validate + capture a case
+- `GET http://localhost:8080/api/cases` → analyst worklist (masked
+  summaries, newest first)
 - `GET http://localhost:8080/api/cases/{caseId}` → case summary + state
 - `POST http://localhost:8080/api/cases/{caseId}/investigations` → run the
   deterministic investigation (allowed from `NEW` and `INCOMPLETE`)
@@ -87,6 +96,13 @@ Then:
   conversational follow-up (spring-ai mode only)
 - `GET http://localhost:8080/api/cases/{caseId}/messages` → ordered
   persisted conversation history for the case
+- `POST http://localhost:8080/api/cases/{caseId}/reviews` → mandatory
+  human-review disposition (`ESCALATE`/`REROUTE`/`OVERRIDE` → `ROUTED`,
+  `REQUEST_MORE_INFORMATION` → `INCOMPLETE`, `CLOSE` → `CLOSED`)
+- `GET http://localhost:8080/api/cases/{caseId}/reviews` → append-only
+  review history
+- `GET http://localhost:8080/actuator/health|info|metrics` →
+  observability surface (all other actuator endpoints stay unexposed)
 
 ### Example intake request
 
@@ -438,6 +454,7 @@ exists anywhere in the UI.
 
 | Screen | URL |
 |---|---|
+| Case list (worklist) | `GET /ui/cases` |
 | Case intake | `GET /ui/cases/new` (`POST /ui/cases`) |
 | Case summary | `GET /ui/cases/{caseId}` |
 | Investigation | `GET /ui/cases/{caseId}/investigation` (`POST …/investigate`) |
@@ -498,7 +515,48 @@ The root page (`/`) links into the workbench. The JSON API under
 See `docs/ui-guide.md`, `docs/ui-accessibility-checklist.md` and
 `docs/phase-7-verification.md`.
 
-## Future Phases
+## Phase 8 Capabilities (verification)
 
-The T01–T12 scenario suite/evaluation harness. See
-`docs/architecture.md` for the target boundaries.
+End-to-end validation of the T01–T12 suite (definitions in
+`docs/phase-8-test-matrix.md`) — intake, deterministic investigation,
+merchant-dispute and insufficient-evidence paths, policy grounding,
+case-scoped memory, the full human-review workflow, failure/resiliency,
+security (XSS/IDOR/injection/disclosure/CSRF), AI-agent safety and UI
+regression. `Phase8EndToEndTest` codifies 14 of the scenarios against a
+real application context; live evidence is recorded in
+`docs/phase-8-verification.md`. One defect found and fixed:
+unmatched/encoded API paths returned 500 instead of a safe 404
+(`GlobalExceptionHandler` now maps `NoResourceFoundException`).
+
+## Phase 9 Capabilities (current)
+
+Everything from Phases 1–8, plus **observability and evaluation**:
+
+- **Actuator** — `health`, `info`, `metrics` only; every sensitive
+  endpoint stays unexposed (404). `ProcessorHealthIndicator` reports
+  bounded config metadata; `show-details: never`.
+- **Metrics** — `fraudcase.*` counters/timers for case intake,
+  investigation lifecycle (started/completed/failed + duration by mode),
+  per-tool invocations/failures/duration, AI request/failure/latency,
+  review submitted/rejected, message answers. Tag values are small fixed
+  sets only — never case/customer/transaction ids or user text.
+- **Correlation** — `CorrelationIdFilter` propagates/generates
+  `X-Request-Id` into MDC and echoes it on responses; `caseId` joins the
+  MDC inside workflow entry points; the log pattern prints both.
+- **Safe logging** — structured lifecycle events
+  (`CASE_CREATED`, `INVESTIGATION_*`, `AI_REQUEST_FAILED`, `TOOL_FAILED`,
+  `REVIEW_*`) carry bounded metadata only — no prompts, statements,
+  tool payloads or secrets.
+- **Evaluation** — `evaluation/` package scores deterministic
+  business-control scenarios E01–E18 (functional/failure/security/
+  isolation/human-review) on a documented 0/1/2 scale and
+  `Phase9SpringAiEvaluationTest` covers the AI dimension E20–E25 with a
+  scripted model. Reports land in `target/evaluation-report.json` and
+  `target/evaluation-springai-report.json`. No LLM-as-judge.
+
+## Phase 10 Capabilities (current)
+
+Final readiness pass — a `GET /api/cases` summary list plus the
+`/ui/cases` analyst worklist page (newest first, masked summaries only),
+final gap/traceability documentation, clean reproducible build and a
+repeatable demo script (`docs/DEMO.md`).

@@ -30,10 +30,21 @@ management:
   endpoints:
     web:
       exposure:
-        include: health
+        # Read-only operational endpoints only. env/configprops/beans/
+        # heapdump-type endpoints stay unexposed.
+        include: health,info,metrics
   endpoint:
     health:
       show-details: never
+  info:
+    env:
+      enabled: true            # exposes the static info.* block, not env vars
+
+info:
+  app:
+    name: fraud-case-agent
+    description: Synthetic payment fraud investigation assistant (capstone)
+    human-review-required: true
 
 # ---------------------------------------------------------------------------
 # Capstone settings. Safety values are startup-validated invariants; setting

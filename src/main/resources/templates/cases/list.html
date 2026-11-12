@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{fragments/layout :: head('Cases')}"></head>
+<body>
+<header th:replace="~{fragments/layout :: header}"></header>
+<main class="workspace" id="main">
+    <h1>Cases</h1>
+    <p>All synthetic training cases, newest first. Selecting a case opens
+        its investigation workbench.</p>
+
+    <section th:if="${cases.isEmpty()}" class="card empty-state">
+        <h2>No cases yet</h2>
+        <p>Create a case through the intake form to begin.</p>
+        <div class="actions">
+            <a class="btn btn-primary" th:href="@{/ui/cases/new}">New Case Intake</a>
+        </div>
+    </section>
+
+    <section th:unless="${cases.isEmpty()}" class="card">
+        <ul class="case-list">
+            <li th:each="c : ${cases}">
+                <a th:href="@{/ui/cases/{id}(id=${c.caseId()})}"
+                   th:text="${c.caseId()}">FC-00000000</a>
+                <span class="badge badge-state" th:text="${c.state()}">NEW</span>
+                <span class="case-meta"
+                      th:text="${c.claim().issueType()} + ' · '
+                              + ${c.transaction().maskedMerchant()} + ' · reported '
+                              + ${#temporals.format(c.reportedAt(), 'yyyy-MM-dd HH:mm')}">meta</span>
+            </li>
+        </ul>
+        <div class="actions">
+            <a class="btn btn-primary" th:href="@{/ui/cases/new}">New Case Intake</a>
+        </div>
+    </section>
+</main>
+<footer th:replace="~{fragments/layout :: footer}"></footer>
+</body>
+</html>

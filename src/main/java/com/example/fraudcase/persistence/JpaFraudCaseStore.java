@@ -4,6 +4,7 @@ import com.example.fraudcase.domain.FraudCase;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.List;
 import java.util.Optional;
 
 /**
@@ -44,5 +45,15 @@ public class JpaFraudCaseStore implements FraudCaseStore {
         return caseRepository.findById(caseId)
                 .flatMap(c -> claimRepository.findByCaseId(caseId)
                         .map(claim -> FraudCaseMapper.toDomain(c, claim)));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<FraudCase> findAllRecent() {
+        return caseRepository.findAllByOrderByCreatedAtDesc().stream()
+                .flatMap(c -> claimRepository.findByCaseId(c.getCaseId())
+                        .map(claim -> FraudCaseMapper.toDomain(c, claim))
+                        .stream())
+                .toList();
     }
 }

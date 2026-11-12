@@ -26,8 +26,11 @@ import com.example.fraudcase.persistence.RecommendationRepository;
 import com.example.fraudcase.rag.PolicyQueryBuilder;
 import com.example.fraudcase.rag.PolicyRetrievalOutcome;
 import com.example.fraudcase.rag.PolicyRetriever;
+import com.example.fraudcase.observability.CaseMetrics;
+import com.example.fraudcase.observability.CorrelationIdFilter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.slf4j.MDC;
 import org.springframework.ai.chat.memory.ChatMemory;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.beans.factory.ObjectProvider;
@@ -85,6 +88,7 @@ public class CaseMessageService {
     private final SpringAiFollowUpAgent followUpAgent;
     private final AuditService auditService;
     private final CapstoneProperties properties;
+    private final CaseMetrics metrics;
 
     /** Cases whose history has been reloaded once in this JVM. */
     private final Set<String> reconstructed = ConcurrentHashMap.newKeySet();
@@ -98,7 +102,8 @@ public class CaseMessageService {
                               ObjectProvider<PolicyRetriever> policyRetriever,
                               SpringAiFollowUpAgent followUpAgent,
                               AuditService auditService,
-                              CapstoneProperties properties) {
+                              CapstoneProperties properties,
+                              CaseMetrics metrics) {
         this.caseStore = caseStore;
         this.conversationStore = conversationStore;
         this.chatMemory = chatMemory;
@@ -109,6 +114,7 @@ public class CaseMessageService {
         this.followUpAgent = followUpAgent;
         this.auditService = auditService;
         this.properties = properties;
+        this.metrics = metrics;
     }
 
     public record MessageResult(CaseMessage userMessage,
@@ -125,6 +131,15 @@ public class CaseMessageService {
      * per-case lock inside {@link CaseConversationStore#append}.
      */
     public MessageResult submit(String caseId, CaseMessageRequest request) {
+        MDC.put(CorrelationIdFilter.MDC_CASE_ID, caseId);
+        try {
+            return doSubmit(caseId, request);
+        } finally {
+            MDC.remove(CorrelationIdFilter.MDC_CASE_ID);
+        }
+    }
+
+    private MessageResult doSubmit(String caseId, CaseMessageRequest request) {
         FraudCase fraudCase = caseStore.findById(caseId)
                 .orElseThrow(() -> new CaseNotFoundException(caseId));
 
@@ -248,6 +263,7 @@ public class CaseMessageService {
                         + "|seq=" + assistantMessage.sequenceNumber()
                         + "|evidence=" + answer.evidenceIds().size()
                         + "|citations=" + answer.policyCitations().size());
+        metrics.messageAnswered(answerSource.toLowerCase());
         log.info("CASE_MESSAGE_RESPONSE case={} msg={} seq={} ev={} cit={}",
                 caseId, assistantMessage.messageId(),
                 assistantMessage.sequenceNumber(), answer.evidenceIds().size(),

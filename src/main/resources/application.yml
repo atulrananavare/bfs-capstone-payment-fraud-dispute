@@ -35,16 +35,32 @@ logging:
     # full model text at ERROR when JSON parsing fails — suppress it;
     # rejection is still audited via MODEL_OUTPUT_REJECTED.
     org.springframework.ai.converter.BeanOutputConverter: OFF
+  pattern:
+    # Include the per-request correlation id (Phase 9) after the level.
+    # Bounded MDC values only — no payload, prompt or customer text.
+    level: "%5p [%X{requestId:-}][%X{caseId:-}]"
 
 management:
   endpoints:
     web:
       exposure:
-        include: health
+        # Read-only operational endpoints only. No env/configprops/beans/
+        # heapdump-type endpoints — they can expose configuration internals.
+        include: health,info,metrics
   endpoint:
     health:
       # Never expose component details, credentials or internals.
       show-details: never
+  info:
+    env:
+      # Enables the static info.* block below — not environment variables.
+      enabled: true
+
+info:
+  app:
+    name: fraud-case-agent
+    description: Synthetic payment fraud investigation assistant (capstone)
+    human-review-required: true
 
 capstone:
   # Processor implementations: rules | spring-ai.
