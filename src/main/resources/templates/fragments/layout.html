@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head th:fragment="head(title)">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title th:text="${title} + ' — Payment Fraud Investigation'">Payment Fraud Investigation</title>
+    <link rel="stylesheet" th:href="@{/css/app.css}">
+    <script defer th:src="@{/js/app.js}"></script>
+</head>
+<body>
+
+<header class="app-header" th:fragment="header">
+    <div class="app-header-inner">
+        <a class="brand" th:href="@{/}">Payment Fraud Investigation</a>
+        <div class="header-meta">
+            <span th:if="${case != null}" class="header-case">
+                <span class="meta-label">Case</span>
+                <span class="meta-id" th:text="${case.caseId()}">FC-00000000</span>
+                <span class="badge badge-state" th:text="${case.state()}">NEW</span>
+            </span>
+            <span th:if="${processorMode != null}" class="header-mode">
+                <span class="meta-label">Processor</span>
+                <span class="meta-id" th:text="${processorMode}">RULES</span>
+            </span>
+            <span class="badge badge-synthetic">SYNTHETIC TRAINING DATA</span>
+        </div>
+    </div>
+</header>
+
+<footer class="app-footer" th:fragment="footer">
+    <p>
+        Synthetic training application. Recommendations are advisory and
+        require human review. No financial or customer-impacting action is
+        executed.
+    </p>
+</footer>
+
+</body>
+</html>

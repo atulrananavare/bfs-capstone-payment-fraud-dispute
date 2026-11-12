@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{fragments/layout :: head('Human Review')}"></head>
+<body>
+<header th:replace="~{fragments/layout :: header}"></header>
+<div class="workbench">
+    <nav th:replace="~{fragments/workflow-nav :: nav}"></nav>
+    <main class="workspace" id="main">
+        <h1>Human Review</h1>
+
+        <div class="callout callout-advisory" role="note">
+            <strong>Human decision required.</strong>
+            AI recommendations are advisory. No financial or
+            customer-impacting action is executed by this training
+            application.
+        </div>
+
+        <!-- Success summary after a submitted disposition -->
+        <section th:if="${reviewSuccess}" class="card review-success"
+                 aria-labelledby="review-done-h" role="status">
+            <h2 id="review-done-h">Review recorded</h2>
+            <dl class="meta-list">
+                <div><dt>Review ID</dt>
+                    <dd class="mono wrap-id" th:text="${reviewResultId}">REV-…</dd></div>
+                <div><dt>Disposition</dt>
+                    <dd th:text="${reviewResultDisposition}">ESCALATE</dd></div>
+                <div><dt>Reviewer</dt>
+                    <dd th:text="${reviewResultReviewer}">…</dd></div>
+                <div><dt>Recorded at</dt>
+                    <dd th:text="${reviewResultRecordedAt}">…</dd></div>
+                <div><dt>Resulting case status</dt>
+                    <dd><span class="badge badge-state" th:text="${reviewResultState}">ROUTED</span></dd></div>
+                <div th:if="${reviewResultRoute != null}"><dt>Target route</dt>
+                    <dd th:text="${reviewResultRoute}">…</dd></div>
+            </dl>
+            <p th:if="${reviewResultReplay}" class="help">
+                This was an idempotent replay of an already-recorded
+                disposition — no duplicate was created.
+            </p>
+            <p class="help"><strong>No banking action was automatically
+                executed.</strong></p>
+        </section>
+
+        <!-- Error summary -->
+        <div th:if="${reviewErrors != null && !reviewErrors.isEmpty()}"
+             class="alert alert-error" role="alert" tabindex="-1"
+             id="review-error-summary">
+            <p><strong>Review was not submitted.</strong></p>
+            <ul>
+                <li th:each="err : ${reviewErrors}" th:text="${err}">error</li>
+            </ul>
+        </div>
+
+        <!-- Not-ready state -->
+        <section th:if="${recommendation == null || !canReview}"
+                 class="card empty-state">
+            <h2>This case is not ready for human review</h2>
+            <p th:if="${recommendation == null}">No validated recommendation
+                exists yet.</p>
+            <p th:unless="${recommendation == null}">
+                Case status
+                <span class="badge badge-state" th:text="${case.state()}">…</span>
+                does not accept a new disposition.
+            </p>
+            <a class="btn btn-secondary"
+               th:href="@{/ui/cases/{id}/investigation(id=${case.caseId()})}">
+                Go to Investigation</a>
+        </section>
+
+        <div th:if="${recommendation != null}" class="review-grid">
+            <!-- Left: agent recommendation + dispositions + rationale -->
+            <div class="review-main">
+                <section class="card" aria-labelledby="agent-rec-h">
+                    <div class="card-source">
+                        <span class="badge"
+                              th:classappend="${recommendation.mode.name() == 'RULES'} ? 'badge-mode' : 'badge-mode'"
+                              th:text="${recommendation.mode == T(com.example.fraudcase.domain.RecommendationMode).RULES ? 'Rules Recommendation' : 'AI Recommendation'}">AI Recommendation</span>
+                    </div>
+                    <h2 id="agent-rec-h">Agent recommendation</h2>
+                    <dl class="summary-grid">
+                        <div><dt>Classification</dt>
+                            <dd th:text="${recommendation.classification}">…</dd></div>
+                        <div><dt>Risk</dt>
+                            <dd><span class="badge" th:text="${recommendation.risk}">HIGH</span></dd></div>
+                        <div><dt>Recommended route</dt>
+                            <dd th:text="${recommendation.route}">…</dd></div>
+                        <div><dt>Confidence</dt>
+                            <dd th:text="${#numbers.formatDecimal(recommendation.confidence * 100, 0, 0)} + '%'">…</dd></div>
+                        <div><dt>Source</dt>
+                            <dd th:text="${recommendation.mode}">RULES</dd></div>
+                        <div><dt>Recommendation ID</dt>
+                            <dd class="mono wrap-id" th:text="${recommendation.recommendationId}">REC-…</dd></div>
+                    </dl>
+                    <p class="rationale" th:text="${recommendation.rationale}">…</p>
+                </section>
+
+                <section th:if="${!missingInformation.isEmpty()}"
+                         class="card callout callout-warn">
+                    <h2>Missing information</h2>
+                    <ul>
+                        <li th:each="m : ${missingInformation}" th:text="${m}">…</li>
+                    </ul>
+                </section>
+
+                <form th:if="${canReview}" method="post" class="card form-card"
+                      th:action="@{/ui/cases/{id}/review(id=${case.caseId()})}"
+                      th:object="${reviewForm}" novalidate>
+                    <input type="hidden" th:if="${_csrf != null}"
+                           th:name="${_csrf.parameterName}" th:value="${_csrf.token}">
+                    <input type="hidden" th:field="*{recommendationId}">
+                    <input type="hidden" th:field="*{clientReference}">
+
+                    <h2>Disposition</h2>
+                    <fieldset class="disposition-group">
+                        <legend class="sr-only">Review disposition</legend>
+                        <label class="disposition-option"
+                               th:each="d : ${dispositions}">
+                            <input type="radio" name="disposition"
+                                   th:value="${d}"
+                                   th:checked="${reviewForm.disposition == d}">
+                            <span class="disposition-title" th:text="${d}">ESCALATE</span>
+                            <span class="disposition-desc"
+                                  th:text="${d == T(com.example.fraudcase.domain.ReviewDispositionType).ESCALATE} ? 'Route the case to the approved investigation queue.' :
+                                           (${d == T(com.example.fraudcase.domain.ReviewDispositionType).REQUEST_MORE_INFORMATION} ? 'Return the case for required supporting evidence.' :
+                                           (${d == T(com.example.fraudcase.domain.ReviewDispositionType).REROUTE} ? 'Select a different approved operational route.' :
+                                           (${d == T(com.example.fraudcase.domain.ReviewDispositionType).OVERRIDE} ? 'Record a human decision that differs from the recommendation.' :
+                                           'Record final closure when permitted.')))">desc</span>
+                        </label>
+                    </fieldset>
+
+                    <div class="field" id="target-route-field" hidden>
+                        <label for="targetRoute">Target route
+                            (required for REROUTE / OVERRIDE)</label>
+                        <select id="targetRoute" th:field="*{targetRoute}">
+                            <option value="">— select —</option>
+                            <option th:each="r : ${routes}"
+                                    th:value="${r}" th:text="${r}"></option>
+                        </select>
+                    </div>
+
+                    <div class="field">
+                        <label for="reason">Reviewer rationale
+                            <span class="required-marker">(required)</span></label>
+                        <textarea id="reason" rows="4" th:field="*{reason}"
+                                  maxlength="2000" required
+                                  aria-describedby="reason-help"></textarea>
+                        <p class="help" id="reason-help">A reason is mandatory
+                            for every disposition — including OVERRIDE.</p>
+                    </div>
+
+                    <fieldset class="checklist">
+                        <legend>Review checklist</legend>
+                        <div class="field field-check" th:if="${needAckEvidence}">
+                            <input id="ackEvidence" type="checkbox"
+                                   th:field="*{acknowledgeEvidenceReviewed}">
+                            <label for="ackEvidence">Evidence reviewed</label>
+                        </div>
+                        <div class="field field-check" th:if="${needAckPolicy}">
+                            <input id="ackPolicy" type="checkbox"
+                                   th:field="*{acknowledgePolicyReviewed}">
+                            <label for="ackPolicy">Policy reviewed</label>
+                        </div>
+                        <div class="field field-check"
+                             th:if="${!needAckPolicy}">
+                            <input id="ackPolicyGap" type="checkbox"
+                                   th:field="*{acknowledgePolicyReviewed}">
+                            <label for="ackPolicyGap">Policy grounding
+                                unavailable / gap acknowledged</label>
+                        </div>
+                        <div class="field field-check" th:if="${needAckMissing}">
+                            <input id="ackMissing" type="checkbox"
+                                   th:field="*{acknowledgeMissingInformation}">
+                            <label for="ackMissing">Missing information
+                                acknowledged</label>
+                        </div>
+                        <div class="field field-check" th:if="${needAckContradictions}">
+                            <input id="ackContradictions" type="checkbox"
+                                   th:field="*{acknowledgeContradictions}">
+                            <label for="ackContradictions">Contradictory
+                                evidence acknowledged</label>
+                        </div>
+                    </fieldset>
+
+                    <div class="actions">
+                        <button type="submit" class="btn btn-primary"
+                                data-busy-label="Submitting review…">
+                            Submit Review</button>
+                        <a class="btn btn-secondary"
+                           th:href="@{/ui/cases/{id}/recommendation(id=${case.caseId()})}">
+                            Return to Recommendation</a>
+                    </div>
+                </form>
+            </div>
+
+            <!-- Right: checklist + audit preview -->
+            <aside class="review-side">
+                <section class="card" aria-labelledby="identity-h">
+                    <h2 id="identity-h">Reviewer</h2>
+                    <dl class="meta-list">
+                        <div><dt>Identity</dt>
+                            <dd class="mono" th:text="${reviewer.reviewerId()}">TRAINING-REVIEWER-001</dd></div>
+                        <div><dt>Role</dt>
+                            <dd th:text="${reviewer.role()}">REVIEWER</dd></div>
+                    </dl>
+                    <p class="help">Application-supplied trusted identity —
+                        read only.</p>
+                </section>
+
+                <section class="card" aria-labelledby="ctx-h">
+                    <h2 id="ctx-h">Evidence &amp; policy</h2>
+                    <dl class="meta-list">
+                        <div><dt>Evidence items</dt>
+                            <dd th:text="${evidence.size()}">0</dd></div>
+                        <div><dt>Policy citations</dt>
+                            <dd th:text="${citations.size()}">0</dd></div>
+                        <div><dt>Missing information</dt>
+                            <dd th:text="${missingInformation.size()}">0</dd></div>
+                    </dl>
+                    <a th:href="@{/ui/cases/{id}/evidence(id=${case.caseId()})}">Evidence workspace</a><br>
+                    <a th:href="@{/ui/cases/{id}/policy(id=${case.caseId()})}">Policy citations</a>
+                </section>
+
+                <section class="card" aria-labelledby="audit-h">
+                    <h2 id="audit-h">Audit preview</h2>
+                    <dl class="meta-list">
+                        <div><dt>Case</dt>
+                            <dd class="mono wrap-id" th:text="${case.caseId()}">…</dd></div>
+                        <div><dt>Recommendation</dt>
+                            <dd class="mono wrap-id"
+                                th:text="${recommendation == null ? '—' : recommendation.recommendationId}">…</dd></div>
+                        <div><dt>Reviewer</dt>
+                            <dd class="mono" th:text="${reviewer.reviewerId()}">…</dd></div>
+                        <div><dt>Timestamp</dt>
+                            <dd>Recorded by the server on submit</dd></div>
+                    </dl>
+                    <p class="help">Every disposition appends an immutable
+                        review record and audit events.</p>
+                </section>
+            </aside>
+        </div>
+
+        <!-- Existing dispositions -->
+        <section th:if="${!existingReviews.isEmpty()}" class="card"
+                 aria-labelledby="history-h">
+            <h2 id="history-h">Recorded dispositions</h2>
+            <article class="review-row" th:each="r : ${existingReviews}">
+                <dl class="meta-list">
+                    <div><dt>Review ID</dt>
+                        <dd class="mono wrap-id" th:text="${r.reviewId}">…</dd></div>
+                    <div><dt>Disposition</dt><dd th:text="${r.disposition}">…</dd></div>
+                    <div><dt>Reviewer</dt><dd th:text="${r.reviewerId}">…</dd></div>
+                    <div><dt>Target route</dt>
+                        <dd th:text="${r.targetRoute == null ? '—' : r.targetRoute}">…</dd></div>
+                    <div><dt>Reason</dt><dd th:text="${r.reason}">…</dd></div>
+                    <div><dt>Recorded at</dt>
+                        <dd th:text="${#temporals.format(r.recordedAt, 'yyyy-MM-dd HH:mm:ss z')}">…</dd></div>
+                </dl>
+            </article>
+        </section>
+    </main>
+</div>
+<footer th:replace="~{fragments/layout :: footer}"></footer>
+</body>
+</html>

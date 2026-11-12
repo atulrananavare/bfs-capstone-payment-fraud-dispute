@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{fragments/layout :: head('Not found')}"></head>
+<body>
+<header th:replace="~{fragments/layout :: header}"></header>
+<main class="workspace error-page" id="main">
+    <h1 th:text="${errorTitle} ?: 'Not found'">Not found</h1>
+    <div class="card">
+        <p th:text="${errorMessage} ?: 'The requested case or resource does not exist.'">The requested case or resource does not exist.</p>
+        <div class="actions">
+            <a class="btn btn-primary" th:href="@{/ui/cases/new}">New Case</a>
+            <a class="btn btn-secondary" th:href="@{/}">Home</a>
+        </div>
+    </div>
+</main>
+<footer th:replace="~{fragments/layout :: footer}"></footer>
+</body>
+</html>

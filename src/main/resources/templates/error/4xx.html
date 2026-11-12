@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{fragments/layout :: head('Request could not be completed')}"></head>
+<body>
+<header th:replace="~{fragments/layout :: header}"></header>
+<main class="workspace error-page" id="main">
+    <h1 th:text="${errorTitle} ?: 'Request could not be completed'">Request could not be completed</h1>
+    <div class="card">
+        <p th:text="${errorMessage} ?: 'The request was invalid or conflicts with the current state.'">The request was invalid or conflicts with the current state.</p>
+        <div class="actions">
+            <a class="btn btn-primary" th:href="@{/ui/cases/new}">New Case</a>
+            <a class="btn btn-secondary" th:href="@{/}">Home</a>
+        </div>
+    </div>
+</main>
+<footer th:replace="~{fragments/layout :: footer}"></footer>
+</body>
+</html>

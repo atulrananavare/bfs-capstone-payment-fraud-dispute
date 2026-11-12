@@ -1,14 +1,17 @@
 <!DOCTYPE html>
 <html lang="en" xmlns:th="http://www.thymeleaf.org">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Fraud Case Agent</title>
-</head>
+<head th:replace="~{fragments/layout :: head('Home')}"></head>
 <body>
-<main>
-    <h1>Intelligent Payment Fraud Investigation &amp; Dispute Resolution Agent</h1>
-    <p>Phase 1 foundation. Synthetic training data only. All recommendations require human review.</p>
+<header th:replace="~{fragments/layout :: header}"></header>
+<main class="workspace" id="main">
+    <h1>Payment Fraud Investigation</h1>
+    <p>Synthetic training workbench for fraud and dispute investigation.
+        Every recommendation is advisory and requires human review. No
+        financial or customer-impacting action is executed.</p>
+    <div class="actions">
+        <a class="btn btn-primary" th:href="@{/ui/cases/new}">New Case Intake</a>
+    </div>
 </main>
+<footer th:replace="~{fragments/layout :: footer}"></footer>
 </body>
 </html>

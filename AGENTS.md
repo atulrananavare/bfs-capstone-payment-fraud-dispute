@@ -137,3 +137,33 @@ this repository, in every phase of the project.
     disposition path reads only stored data.
 48. **Every review disposition and rejection is auditable** via append-only
     events with bounded, safe metadata.
+
+## Analyst Workbench UI (Phase 7)
+
+49. **The UI is an assistant, never an actor.** No UI element may execute
+    financial, account, customer-contact or regulatory-filing actions;
+    the only write operations it exposes are case creation, investigation
+    runs, case-scoped messages and human review dispositions — all via
+    application services.
+50. **UI controllers use application services only.** No repository
+    writes, no state mutation, no business-logic duplication in
+    controllers or templates.
+51. **`humanReviewRequired` must stay visible.** Every recommendation view
+    carries an explicit advisory label; the human-review disposition
+    belongs only to the trusted reviewer identity seam — never a form
+    field, hidden input or request parameter.
+52. **All untrusted text is escaped output.** Customer statements, policy
+    passages and any model-produced text render through `th:text`-style
+    escaped expressions only; `th:utext` is forbidden on untrusted data.
+53. **CSRF on all browser form POSTs.** UI forms must include the CSRF
+    token; the stateless JSON API stays exempt to keep REST clients and
+    tests compatible.
+54. **Never render internals.** No prompts, chain-of-thought, stack
+    traces, secrets, full card/account numbers or raw tool payloads —
+    only masked values, bounded summaries, trace ids and timestamps.
+55. **Abstain, don't decorate.** Missing evidence, absent tool runs and
+    policy no-match/unavailable are explicit UI states; a template must
+    never fabricate an item to fill a gap.
+56. **Accessibility is a requirement, not polish.** Labelled controls,
+    keyboard operability, visible focus, landmark structure, AA contrast
+    and responsive layout apply to every screen.

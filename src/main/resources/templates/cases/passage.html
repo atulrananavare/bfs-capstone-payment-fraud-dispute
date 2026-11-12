@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{fragments/layout :: head('Policy Passage')}"></head>
+<body>
+<header th:replace="~{fragments/layout :: header}"></header>
+<div class="workbench">
+    <nav th:replace="~{fragments/workflow-nav :: nav}"></nav>
+    <main class="workspace" id="main">
+        <h1>Policy Passage</h1>
+        <article class="card citation-card">
+            <div class="card-source">
+                <span class="badge badge-source-policy">Retrieved Policy</span>
+            </div>
+            <h2 th:text="${citation.title}">…</h2>
+            <dl class="meta-list">
+                <div><dt>Document</dt><dd th:text="${citation.documentId}">…</dd></div>
+                <div><dt>Version</dt><dd th:text="${citation.version}">…</dd></div>
+                <div><dt>Effective date</dt><dd th:text="${citation.effectiveDate}">…</dd></div>
+                <div><dt>Section</dt><dd th:text="${citation.section}">…</dd></div>
+                <div><dt>Chunk ID</dt>
+                    <dd class="mono wrap-id" th:text="${citation.chunkId}">…</dd></div>
+            </dl>
+            <h3>Exact retrieved passage</h3>
+            <blockquote class="passage passage-full" th:text="${citation.passage}">…</blockquote>
+        </article>
+        <div class="actions">
+            <a class="btn btn-secondary"
+               th:href="@{/ui/cases/{id}/policy(id=${case.caseId()})}">
+                Back to Policy Citations</a>
+        </div>
+    </main>
+</div>
+<footer th:replace="~{fragments/layout :: footer}"></footer>
+</body>
+</html>

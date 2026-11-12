@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{fragments/layout :: head('Evidence')}"></head>
+<body>
+<header th:replace="~{fragments/layout :: header}"></header>
+<div class="workbench">
+    <nav th:replace="~{fragments/workflow-nav :: nav}"></nav>
+    <main class="workspace" id="main">
+        <h1>Evidence Workspace</h1>
+
+        <!-- Customer claim: always separated, never labelled verified -->
+        <section class="card claim-card" aria-labelledby="claim-h">
+            <div class="card-source">
+                <span class="badge badge-source-claim">Customer Reported</span>
+            </div>
+            <h2 id="claim-h">Customer claim</h2>
+            <blockquote class="claim-quote"
+                        th:text="${claim.customerStatement()}">…</blockquote>
+            <dl class="meta-list">
+                <div><dt>Issue type</dt>
+                    <dd th:text="${claim.issueType()}">…</dd></div>
+                <div><dt>Card possession</dt>
+                    <dd th:text="${claim.cardPossession()}">…</dd></div>
+                <div><dt>Merchant recognised</dt>
+                    <dd th:text="${claim.merchantRecognised()}">…</dd></div>
+                <div><dt>Source</dt><dd>Customer intake</dd></div>
+            </dl>
+            <p class="help">Self-reported statement — not independently
+                verified evidence.</p>
+        </section>
+
+        <section th:if="${evidence.isEmpty()}" class="card empty-state">
+            <h2>No evidence has been collected for this case yet</h2>
+            <a class="btn btn-secondary"
+               th:href="@{/ui/cases/{id}/investigation(id=${case.caseId()})}">
+                Go to Investigation</a>
+        </section>
+
+        <section th:unless="${evidence.isEmpty()}" aria-labelledby="ev-h">
+            <h2 id="ev-h">Observed evidence</h2>
+            <div class="evidence-grid">
+                <article class="card evidence-card" th:each="e : ${evidence}">
+                    <div class="card-source">
+                        <span class="badge"
+                              th:classappend="${e.provenance.name() == 'CUSTOMER_INTAKE'} ? 'badge-source-claim' : 'badge-source-tool'"
+                              th:text="${T(com.example.fraudcase.ui.UiModels).provenanceLabel(e.provenance)}">Observed by Tool</span>
+                        <span class="badge" th:text="${e.evidenceType}">DEVICE</span>
+                        <span class="badge"
+                              th:classappend="${e.severity.name() == 'HIGH'} ? 'badge-sev-high' : (${e.severity.name() == 'MEDIUM'} ? 'badge-sev-med' : '')"
+                              th:text="${e.severity}">MEDIUM</span>
+                    </div>
+                    <p class="evidence-summary" th:text="${e.valueSummary}">…</p>
+                    <dl class="meta-list">
+                        <div><dt>Evidence ID</dt>
+                            <dd class="mono wrap-id" th:text="${e.evidenceId}">EVI-…</dd></div>
+                        <div><dt>Provenance</dt>
+                            <dd th:text="${e.provenance}">DEVICE_TOOL</dd></div>
+                        <div><dt>Observed at</dt>
+                            <dd th:text="${#temporals.format(e.observedAt, 'yyyy-MM-dd HH:mm:ss z')}">…</dd></div>
+                        <div><dt>Investigation</dt>
+                            <dd class="mono wrap-id" th:text="${e.investigationId}">INV-…</dd></div>
+                    </dl>
+                </article>
+            </div>
+        </section>
+    </main>
+</div>
+<footer th:replace="~{fragments/layout :: footer}"></footer>
+</body>
+</html>

@@ -1,0 +1,19 @@
+<nav class="workflow-nav" aria-label="Case workflow"
+     xmlns:th="http://www.thymeleaf.org" th:fragment="nav">
+    <p class="nav-title">Case workflow</p>
+    <ol class="nav-list">
+        <li th:each="item : ${nav}"
+            th:classappend="${item.current} ? 'is-current' : (${item.status == 'Done'} ? 'is-done' : (${item.enabled} ? '' : 'is-disabled'))">
+            <a th:if="${item.enabled}" th:href="@{${item.url}}"
+               th:attr="aria-current=(${item.current} ? 'page' : null)">
+                <span class="nav-label" th:text="${item.label}">Step</span>
+                <span class="nav-status"
+                      th:text="${item.current} ? 'Current' : ${item.status}">Pending</span>
+            </a>
+            <span th:unless="${item.enabled}" class="nav-disabled">
+                <span class="nav-label" th:text="${item.label}">Step</span>
+                <span class="nav-status" th:text="${item.status}">Not available</span>
+            </span>
+        </li>
+    </ol>
+</nav>

@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{fragments/layout :: head('Forbidden')}"></head>
+<body>
+<header th:replace="~{fragments/layout :: header}"></header>
+<main class="workspace error-page" id="main">
+    <h1 th:text="${errorTitle} ?: 'Forbidden'">Forbidden</h1>
+    <div class="card">
+        <p th:text="${errorMessage} ?: 'You are not authorised to perform this operation.'">You are not authorised to perform this operation.</p>
+        <div class="actions">
+            <a class="btn btn-primary" th:href="@{/ui/cases/new}">New Case</a>
+            <a class="btn btn-secondary" th:href="@{/}">Home</a>
+        </div>
+    </div>
+</main>
+<footer th:replace="~{fragments/layout :: footer}"></footer>
+</body>
+</html>

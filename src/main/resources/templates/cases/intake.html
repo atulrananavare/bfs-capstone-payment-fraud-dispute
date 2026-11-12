@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{fragments/layout :: head('Case Intake')}"></head>
+<body>
+<header th:replace="~{fragments/layout :: header}"></header>
+<div class="workbench">
+    <nav th:replace="~{fragments/workflow-nav :: nav}"></nav>
+    <main class="workspace" id="main">
+        <h1>Case Intake</h1>
+        <p class="intro">
+            Report a fraud or dispute case. Use masked or tokenised
+            references only — never full card numbers, account numbers,
+            CVV, PIN or credentials.
+        </p>
+
+        <form class="card form-card" th:action="@{/ui/cases}" method="post"
+              th:object="${intakeForm}" novalidate>
+            <input type="hidden" th:if="${_csrf != null}"
+                   th:name="${_csrf.parameterName}" th:value="${_csrf.token}">
+
+            <div th:if="${#fields.hasAnyErrors()}" class="alert alert-error"
+                 role="alert" tabindex="-1" id="intake-error-summary">
+                <p><strong>Please correct the highlighted fields.</strong></p>
+            </div>
+
+            <fieldset>
+                <legend>Customer</legend>
+                <div class="field">
+                    <label for="maskedCustomerRef">Masked customer reference</label>
+                    <input id="maskedCustomerRef" type="text"
+                           th:field="*{maskedCustomerRef}"
+                           placeholder="CUST-&#8226;&#8226;&#8226;&#8226;-4821"
+                           th:attr="aria-invalid=${#fields.hasErrors('maskedCustomerRef')} ? 'true' : null,
+                                    aria-describedby=${#fields.hasErrors('maskedCustomerRef')} ? 'maskedCustomerRef-error maskedCustomerRef-help' : 'maskedCustomerRef-help'">
+                    <p class="help" id="maskedCustomerRef-help">Use masked/tokenised references only.</p>
+                    <p class="field-error" id="maskedCustomerRef-error"
+                       th:if="${#fields.hasErrors('maskedCustomerRef')}"
+                       th:errors="*{maskedCustomerRef}">error</p>
+                </div>
+                <div class="field">
+                    <label for="homeRegion">Home region</label>
+                    <input id="homeRegion" type="text" th:field="*{homeRegion}"
+                           placeholder="IN-KA"
+                           th:attr="aria-invalid=${#fields.hasErrors('homeRegion')} ? 'true' : null">
+                    <p class="field-error" th:if="${#fields.hasErrors('homeRegion')}"
+                       th:errors="*{homeRegion}">error</p>
+                </div>
+            </fieldset>
+
+            <fieldset>
+                <legend>Transaction</legend>
+                <div class="field">
+                    <label for="transactionRef">Transaction reference</label>
+                    <input id="transactionRef" type="text" th:field="*{transactionRef}"
+                           placeholder="TXN-2026-784102"
+                           th:attr="aria-invalid=${#fields.hasErrors('transactionRef')} ? 'true' : null">
+                    <p class="field-error" th:if="${#fields.hasErrors('transactionRef')}"
+                       th:errors="*{transactionRef}">error</p>
+                </div>
+                <div class="field-grid">
+                    <div class="field">
+                        <label for="amount">Amount</label>
+                        <input id="amount" type="number" step="0.01" min="0"
+                               th:field="*{amount}" placeholder="48750.00"
+                               th:attr="aria-invalid=${#fields.hasErrors('amount')} ? 'true' : null">
+                        <p class="field-error" th:if="${#fields.hasErrors('amount')}"
+                           th:errors="*{amount}">error</p>
+                    </div>
+                    <div class="field">
+                        <label for="currency">Currency (ISO)</label>
+                        <input id="currency" type="text" maxlength="3"
+                               th:field="*{currency}" placeholder="INR"
+                               th:attr="aria-invalid=${#fields.hasErrors('currency')} ? 'true' : null">
+                        <p class="field-error" th:if="${#fields.hasErrors('currency')}"
+                           th:errors="*{currency}">error</p>
+                    </div>
+                    <div class="field">
+                        <label for="occurredAt">Transaction date/time</label>
+                        <input id="occurredAt" type="datetime-local"
+                               th:field="*{occurredAt}"
+                               th:attr="aria-invalid=${#fields.hasErrors('occurredAt')} ? 'true' : null">
+                        <p class="field-error" th:if="${#fields.hasErrors('occurredAt')}"
+                           th:errors="*{occurredAt}">error</p>
+                    </div>
+                </div>
+                <div class="field-grid">
+                    <div class="field">
+                        <label for="status">Transaction status</label>
+                        <select id="status" th:field="*{status}">
+                            <option value="">— select —</option>
+                            <option th:each="v : ${transactionStatuses}"
+                                    th:value="${v}" th:text="${v}"></option>
+                        </select>
+                        <p class="field-error" th:if="${#fields.hasErrors('status')}"
+                           th:errors="*{status}">error</p>
+                    </div>
+                    <div class="field">
+                        <label for="channel">Transaction channel</label>
+                        <select id="channel" th:field="*{channel}">
+                            <option value="">— select —</option>
+                            <option th:each="v : ${transactionChannels}"
+                                    th:value="${v}" th:text="${v}"></option>
+                        </select>
+                        <p class="field-error" th:if="${#fields.hasErrors('channel')}"
+                           th:errors="*{channel}">error</p>
+                    </div>
+                    <div class="field">
+                        <label for="maskedMerchant">Masked merchant</label>
+                        <input id="maskedMerchant" type="text"
+                               th:field="*{maskedMerchant}"
+                               placeholder="NORTHSTAR DIGITAL &#8226;&#8226;&#8226;&#8226;73"
+                               th:attr="aria-invalid=${#fields.hasErrors('maskedMerchant')} ? 'true' : null,
+                                        aria-describedby=${#fields.hasErrors('maskedMerchant')} ? 'maskedMerchant-error maskedMerchant-help' : 'maskedMerchant-help'">
+                        <p class="help" id="maskedMerchant-help">Masked merchant descriptor only.</p>
+                        <p class="field-error" id="maskedMerchant-error"
+                           th:if="${#fields.hasErrors('maskedMerchant')}"
+                           th:errors="*{maskedMerchant}">error</p>
+                    </div>
+                </div>
+            </fieldset>
+
+            <fieldset>
+                <legend>Customer claim</legend>
+                <div class="field-grid">
+                    <div class="field">
+                        <label for="issueType">Issue type</label>
+                        <select id="issueType" th:field="*{issueType}">
+                            <option value="">— select —</option>
+                            <option th:each="v : ${issueTypes}"
+                                    th:value="${v}" th:text="${v}"></option>
+                        </select>
+                        <p class="field-error" th:if="${#fields.hasErrors('issueType')}"
+                           th:errors="*{issueType}">error</p>
+                    </div>
+                    <div class="field">
+                        <label for="reportChannel">Reported via</label>
+                        <select id="reportChannel" th:field="*{reportChannel}">
+                            <option value="">— select —</option>
+                            <option th:each="v : ${reportChannels}"
+                                    th:value="${v}" th:text="${v}"></option>
+                        </select>
+                        <p class="field-error" th:if="${#fields.hasErrors('reportChannel')}"
+                           th:errors="*{reportChannel}">error</p>
+                    </div>
+                </div>
+                <div class="field">
+                    <label for="customerStatement">Customer statement</label>
+                    <textarea id="customerStatement" rows="3"
+                              th:field="*{customerStatement}"
+                              placeholder="I do not recognise this purchase and still have my card."
+                              th:attr="aria-invalid=${#fields.hasErrors('customerStatement')} ? 'true' : null"></textarea>
+                    <p class="field-error" th:if="${#fields.hasErrors('customerStatement')}"
+                       th:errors="*{customerStatement}">error</p>
+                </div>
+                <div class="field-grid">
+                    <div class="field">
+                        <label for="cardPossession">Card possession</label>
+                        <select id="cardPossession" th:field="*{cardPossession}">
+                            <option value="">— select —</option>
+                            <option th:each="v : ${cardPossessions}"
+                                    th:value="${v}" th:text="${v}"></option>
+                        </select>
+                        <p class="field-error" th:if="${#fields.hasErrors('cardPossession')}"
+                           th:errors="*{cardPossession}">error</p>
+                    </div>
+                    <div class="field">
+                        <label for="merchantRecognised">Merchant recognised</label>
+                        <select id="merchantRecognised" th:field="*{merchantRecognised}">
+                            <option value="">— select —</option>
+                            <option th:each="v : ${merchantRecognitions}"
+                                    th:value="${v}" th:text="${v}"></option>
+                        </select>
+                        <p class="field-error" th:if="${#fields.hasErrors('merchantRecognised')}"
+                           th:errors="*{merchantRecognised}">error</p>
+                    </div>
+                </div>
+            </fieldset>
+
+            <fieldset>
+                <legend>Confirmations</legend>
+                <div class="field field-check">
+                    <input id="syntheticDataConfirmed" type="checkbox"
+                           th:field="*{syntheticDataConfirmed}">
+                    <label for="syntheticDataConfirmed">
+                        I confirm this case uses synthetic training data only
+                    </label>
+                    <p class="field-error" th:if="${#fields.hasErrors('syntheticDataConfirmed')}"
+                       th:errors="*{syntheticDataConfirmed}">error</p>
+                </div>
+                <div class="field field-check">
+                    <input id="reviewRequired" type="checkbox"
+                           th:field="*{reviewRequired}">
+                    <label for="reviewRequired">
+                        I understand every recommendation requires human review
+                    </label>
+                    <p class="field-error" th:if="${#fields.hasErrors('reviewRequired')}"
+                       th:errors="*{reviewRequired}">error</p>
+                </div>
+            </fieldset>
+
+            <div class="actions">
+                <button type="submit" name="intent" value="investigate"
+                        class="btn btn-primary">Start Investigation</button>
+                <button type="submit" name="intent" value="create"
+                        class="btn btn-secondary">Create Case</button>
+                <button type="button" class="btn btn-secondary" disabled
+                        title="Draft persistence is not part of the case model; this action is unavailable.">
+                    Save draft
+                </button>
+            </div>
+            <p class="help">The case model has no draft state — a validated
+                case is created directly. “Start Investigation” validates,
+                persists and immediately runs the bounded evidence
+                collection.</p>
+        </form>
+    </main>
+</div>
+<footer th:replace="~{fragments/layout :: footer}"></footer>
+</body>
+</html>

@@ -1,6 +1,11 @@
 spring:
   application:
     name: fraud-case-agent
+  autoconfigure:
+    exclude:
+      # HTTP security is CSRF-only (Phase 7); the identity seam supplies
+      # principals — no generated user/password noise is needed.
+      - org.springframework.boot.autoconfigure.security.servlet.UserDetailsServiceAutoConfiguration
   jackson:
     deserialization:
       # Clients must not smuggle server-managed fields (caseId, analystId)

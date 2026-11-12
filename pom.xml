@@ -54,6 +54,18 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-thymeleaf</artifactId>
         </dependency>
+        <!--
+            Phase 7 analyst UI. Spring Security is introduced ONLY for CSRF
+            protection on the state-changing Thymeleaf forms (every request
+            is permitted — the established Phase 6 reviewer identity seam
+            remains the authorisation boundary). Stateless JSON APIs under
+            /api/** are CSRF-exempt; browser routes under /ui/** require
+            the synchronizer token.
+        -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-security</artifactId>
+        </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-actuator</artifactId>
@@ -95,6 +107,11 @@
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.security</groupId>
+            <artifactId>spring-security-test</artifactId>
             <scope>test</scope>
         </dependency>
     </dependencies>

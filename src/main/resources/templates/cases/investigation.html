@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{fragments/layout :: head('Investigation')}"></head>
+<body>
+<header th:replace="~{fragments/layout :: header}"></header>
+<div class="workbench">
+    <nav th:replace="~{fragments/workflow-nav :: nav}"></nav>
+    <main class="workspace" id="main">
+        <h1>Investigation</h1>
+
+        <div th:if="${investigationError}" class="alert alert-error" role="alert">
+            <p th:text="${investigationError}">error</p>
+        </div>
+
+        <!-- Empty state -->
+        <section th:if="${traces.isEmpty()}" class="card empty-state">
+            <h2>No investigation has run yet</h2>
+            <p>The bounded evidence collection has not been executed for
+                this case.</p>
+            <form th:if="${canInvestigate}" method="post"
+                  th:action="@{/ui/cases/{id}/investigate(id=${case.caseId()})}"
+                  class="inline-form">
+                <input type="hidden" th:if="${_csrf != null}"
+                       th:name="${_csrf.parameterName}" th:value="${_csrf.token}">
+                <button type="submit" class="btn btn-primary"
+                        data-busy-label="Starting investigation…">
+                    Start Investigation
+                </button>
+            </form>
+        </section>
+
+        <div th:unless="${traces.isEmpty()}" class="investigation-grid">
+            <!-- Bounded plan (left) -->
+            <section class="card" aria-labelledby="plan-h">
+                <h2 id="plan-h">Investigation plan</h2>
+                <p class="help">Operational steps actually executed — no
+                    model reasoning is shown.</p>
+                <ol class="plan-list">
+                    <li>
+                        <span class="plan-step">Record customer claim</span>
+                        <span class="badge"
+                              th:text="${claimEvidencePresent} ? 'Complete' : 'Pending'">Complete</span>
+                    </li>
+                    <li th:each="t : ${traces}">
+                        <span class="plan-step" th:text="${t.toolName}">tool</span>
+                        <span class="badge"
+                              th:classappend="${t.status.name() == 'SUCCESS'} ? 'badge-ok' : 'badge-warn'"
+                              th:text="${t.status}">SUCCESS</span>
+                    </li>
+                    <li>
+                        <span class="plan-step">Policy grounding</span>
+                        <span class="badge" th:text="${policyStatus}">RETRIEVED</span>
+                    </li>
+                    <li>
+                        <span class="plan-step">Recommendation</span>
+                        <span class="badge"
+                              th:text="${recommendation != null} ? 'Complete' : 'Not created'">Complete</span>
+                    </li>
+                </ol>
+            </section>
+
+            <!-- Actual tool executions (main) -->
+            <section class="card" aria-labelledby="tools-h">
+                <h2 id="tools-h">Tool execution</h2>
+                <div class="tool-card" th:each="t : ${traces}">
+                    <div class="tool-card-head">
+                        <strong th:text="${t.toolName}">getDeviceSignals</strong>
+                        <span class="badge"
+                              th:classappend="${t.status.name() == 'SUCCESS'} ? 'badge-ok' : 'badge-warn'"
+                              th:text="${t.status}">SUCCESS</span>
+                    </div>
+                    <p class="tool-summary" th:text="${t.resultSummary} ?: 'No result recorded.'">summary</p>
+                    <dl class="meta-list">
+                        <div><dt>Duration</dt>
+                            <dd th:text="${t.durationMs} + ' ms'">12 ms</dd></div>
+                        <div><dt>Trace ID</dt>
+                            <dd class="mono wrap-id" th:text="${t.traceId}">TRC-…</dd></div>
+                        <div><dt>Executed at</dt>
+                            <dd th:text="${#temporals.format(t.executedAt, 'yyyy-MM-dd HH:mm:ss z')}">time</dd></div>
+                        <div><dt>Investigation</dt>
+                            <dd class="mono wrap-id" th:text="${t.investigationId}">INV-…</dd></div>
+                    </dl>
+                </div>
+            </section>
+        </div>
+
+        <!-- Unresolved / missing information -->
+        <section th:if="${!missingInformation.isEmpty() || !contradictions.isEmpty()}"
+                 class="card callout callout-warn" aria-labelledby="missing-h">
+            <h2 id="missing-h">Unresolved / missing information</h2>
+            <ul>
+                <li th:each="m : ${missingInformation}" th:text="${m}">missing</li>
+            </ul>
+            <div th:if="${!contradictions.isEmpty()}" class="contradictions">
+                <h3>Contradictory evidence</h3>
+                <ul>
+                    <li th:each="c : ${contradictions}" th:text="${c}">contradiction</li>
+                </ul>
+            </div>
+            <p class="help">These gaps are preserved deliberately — they are
+                never filled in or hidden by the investigation.</p>
+        </section>
+
+        <div class="actions" th:unless="${traces.isEmpty()}">
+            <form th:if="${canInvestigate}" method="post"
+                  th:action="@{/ui/cases/{id}/investigate(id=${case.caseId()})}"
+                  class="inline-form">
+                <input type="hidden" th:if="${_csrf != null}"
+                       th:name="${_csrf.parameterName}" th:value="${_csrf.token}">
+                <button type="submit" class="btn btn-secondary"
+                        data-busy-label="Restarting investigation…"
+                        th:text="${investigateLabel}">Retry Investigation</button>
+            </form>
+            <a th:if="${recommendation != null}" class="btn btn-primary"
+               th:href="@{/ui/cases/{id}/recommendation(id=${case.caseId()})}">
+                View Recommendation</a>
+        </div>
+    </main>
+</div>
+<footer th:replace="~{fragments/layout :: footer}"></footer>
+</body>
+</html>

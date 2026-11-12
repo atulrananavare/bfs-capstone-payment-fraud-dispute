@@ -2,10 +2,12 @@ package com.example.fraudcase.api;
 
 import com.example.fraudcase.TestFixtures;
 import com.example.fraudcase.application.FraudCaseService;
+import com.example.fraudcase.config.SecurityConfig;
 import com.example.fraudcase.domain.FraudCase;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
+import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
@@ -21,6 +23,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @WebMvcTest(FraudCaseController.class)
+// The JSON API is CSRF-exempt; importing the real chain keeps the slice
+// test on the same rules as the running application.
+@Import(SecurityConfig.class)
 class FraudCaseControllerTest {
 
     @Autowired

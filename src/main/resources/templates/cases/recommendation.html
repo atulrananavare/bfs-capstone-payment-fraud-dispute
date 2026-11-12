@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{fragments/layout :: head('Recommendation')}"></head>
+<body>
+<header th:replace="~{fragments/layout :: header}"></header>
+<div class="workbench">
+    <nav th:replace="~{fragments/workflow-nav :: nav}"></nav>
+    <main class="workspace" id="main">
+        <h1>Recommendation</h1>
+
+        <section th:if="${recommendation == null}" class="card empty-state">
+            <h2>No validated recommendation is available</h2>
+            <p>The investigation has not produced a validated
+                recommendation for this case. Invalid model output is never
+                shown as a recommendation.</p>
+            <a class="btn btn-secondary"
+               th:href="@{/ui/cases/{id}/investigation(id=${case.caseId()})}">
+                Go to Investigation</a>
+        </section>
+
+        <div th:unless="${recommendation == null}">
+            <div class="callout callout-advisory" role="note">
+                <strong>ADVISORY RECOMMENDATION.</strong>
+                Human review is required before routing or closing this
+                case. Confidence is advisory and is not permission for
+                automated action.
+            </div>
+
+            <section class="card" aria-labelledby="rec-h">
+                <h2 id="rec-h">Agent recommendation</h2>
+                <dl class="summary-grid">
+                    <div><dt>Classification</dt>
+                        <dd><span class="badge badge-class"
+                                  th:text="${recommendation.classification}">…</span></dd></div>
+                    <div><dt>Risk level</dt>
+                        <dd><span class="badge"
+                                  th:text="${recommendation.risk}">HIGH</span></dd></div>
+                    <div><dt>Recommended route</dt>
+                        <dd th:text="${recommendation.route}">FRAUD_INVESTIGATION</dd></div>
+                    <div><dt>Confidence</dt>
+                        <dd><span th:text="${#numbers.formatDecimal(recommendation.confidence * 100, 0, 0)} + '%'">85%</span>
+                            <span class="help">advisory only</span></dd></div>
+                    <div><dt>Source</dt>
+                        <dd><span class="badge badge-mode"
+                                  th:text="${recommendation.mode}">RULES</span></dd></div>
+                    <div><dt>Human review</dt>
+                        <dd><span class="badge badge-required">REQUIRED</span></dd></div>
+                    <div><dt>Recommendation ID</dt>
+                        <dd class="mono wrap-id"
+                            th:text="${recommendation.recommendationId}">REC-…</dd></div>
+                </dl>
+
+                <h3>Rationale</h3>
+                <p class="rationale" th:text="${recommendation.rationale}">…</p>
+            </section>
+
+            <section class="card" aria-labelledby="checks-h">
+                <h2 id="checks-h">Recommendation checklist</h2>
+                <ul class="check-list">
+                    <li><span class="check-mark" aria-hidden="true">✓</span>
+                        Evidence items linked:
+                        <span th:text="${recommendation.evidenceIds.size()}">0</span></li>
+                    <li th:if="${!citations.isEmpty()}">
+                        <span class="check-mark" aria-hidden="true">✓</span>
+                        Policy citation available
+                    </li>
+                    <li th:if="${citations.isEmpty()}">
+                        <span class="check-warn" aria-hidden="true">!</span>
+                        No applicable policy citation (retrieval abstained
+                        or was not requested)
+                    </li>
+                    <li th:if="${!missingInformation.isEmpty()}">
+                        <span class="check-warn" aria-hidden="true">!</span>
+                        Missing information present
+                    </li>
+                    <li><span class="check-mark" aria-hidden="true">✓</span>
+                        Passed application validation (persisted)</li>
+                    <li><span class="check-mark" aria-hidden="true">✓</span>
+                        Human review required</li>
+                </ul>
+            </section>
+
+            <section th:if="${!missingInformation.isEmpty() || !contradictions.isEmpty()}"
+                     class="card callout callout-warn" aria-labelledby="miss-h">
+                <h2 id="miss-h">Missing information</h2>
+                <ul>
+                    <li th:each="m : ${missingInformation}" th:text="${m}">…</li>
+                </ul>
+                <div th:if="${!contradictions.isEmpty()}" class="contradictions">
+                    <h3>Contradictory evidence</h3>
+                    <ul>
+                        <li th:each="c : ${contradictions}" th:text="${c}">…</li>
+                    </ul>
+                </div>
+            </section>
+
+            <div class="actions">
+                <a th:if="${canReview}" class="btn btn-primary"
+                   th:href="@{/ui/cases/{id}/review(id=${case.caseId()})}">
+                    Continue to Human Review</a>
+                <a class="btn btn-secondary"
+                   th:href="@{/ui/cases/{id}/evidence(id=${case.caseId()})}">
+                    Evidence</a>
+                <a class="btn btn-secondary"
+                   th:href="@{/ui/cases/{id}/policy(id=${case.caseId()})}">
+                    Policy Citations</a>
+            </div>
+
+            <!-- Compact case-scoped follow-up (Phase 5) -->
+            <section class="card" id="followup" aria-labelledby="followup-h">
+                <h2 id="followup-h">Case-scoped follow-up</h2>
+                <div th:if="${conversationError}" class="alert alert-error" role="alert">
+                    <p th:text="${conversationError}">error</p>
+                </div>
+                <p th:if="${!conversationAvailable}" class="help">
+                    Conversation service unavailable in RULES mode — this
+                    screen remains fully usable without it.
+                </p>
+                <div th:if="${conversationAvailable}">
+                    <p th:if="${messages.isEmpty()}" class="help">
+                        No follow-up messages yet.
+                    </p>
+                    <ul class="message-list">
+                        <li th:each="m : ${messages}"
+                            th:classappend="${m.role().name() == 'USER'} ? 'msg-user' : 'msg-assistant'">
+                            <span class="msg-role" th:text="${m.role()}">USER</span>
+                            <span class="msg-text" th:text="${m.content()}">…</span>
+                            <span class="msg-time mono"
+                                  th:text="${#temporals.format(m.createdAt(), 'yyyy-MM-dd HH:mm')}">…</span>
+                        </li>
+                    </ul>
+                    <form method="post"
+                          th:action="@{/ui/cases/{id}/messages(id=${case.caseId()})}">
+                        <input type="hidden" th:if="${_csrf != null}"
+                               th:name="${_csrf.parameterName}" th:value="${_csrf.token}">
+                        <input type="hidden" name="clientReference"
+                               th:value="${followupClientRef}">
+                        <div class="field">
+                            <label for="followupMessage">Follow-up question
+                                (this case only)</label>
+                            <textarea id="followupMessage" name="message"
+                                      rows="2" maxlength="2000" required></textarea>
+                        </div>
+                        <button type="submit" class="btn btn-secondary"
+                                data-busy-label="Sending…">Send follow-up</button>
+                    </form>
+                </div>
+            </section>
+        </div>
+    </main>
+</div>
+<footer th:replace="~{fragments/layout :: footer}"></footer>
+</body>
+</html>

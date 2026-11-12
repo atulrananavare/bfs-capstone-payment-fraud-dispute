@@ -22,10 +22,10 @@ lives behind the adapter boundary.
 │  CaseState machine · classification/route/risk/intake enums     │
 │  invariants — framework-neutral, no AI imports                  │
 ├───────────────────────┬─────────────────────────────────────────┤
-│ RULES ADAPTER (now)   │ AI ADAPTER                              │
-│ RulesFraudCaseAgent   │ SpringAiFraudCaseAgent (later)          │
-│ deterministic R001-8  │ prompts · ChatClient/ChatModel · tools  │
-│ fallback · rule IDs   │ · memory · retrieval · typed output     │
+│ RULES ADAPTER (now)   │ AI ADAPTER (now — Phase 3)              │
+│ RulesFraudCaseAgent   │ SpringAiFraudCaseAgent                  │
+│ deterministic R001-8  │ system prompt · ChatModel · case-bound  │
+│ fallback · rule IDs   │ tool callbacks · typed output · bounded │
 ├───────────────────────┴─────────────────────────────────────────┤
 │ TOOLS (now)            │ KNOWLEDGE                              │
 │ 6 allow-listed,        │ PolicyIngestionService · Retriever     │
@@ -87,14 +87,31 @@ invents an authentication outcome (`authOutcome=UNAVAILABLE` becomes
 `missingInformation`, never a claimed success/failure). Its output is
 always passed through `RecommendationValidator` before persistence.
 
-### Spring AI adapter (later)
-`SpringAiFraudCaseAgent` — prompts as resources, `ChatClient`/`ChatModel`,
-typed tool methods, `VectorStore` retrieval, case-keyed memory/advisor,
-Micrometer observations. System role: *"a payment-fraud and dispute triage
-assistant, not a final financial decision maker."* It may only use
-validated case facts, returned tool evidence, retrieved synthetic policy
-and approved case context — and must abstain rather than fabricate.
-Exact APIs will be verified against `spring-ai.version` (1.1.8).
+### Spring AI adapter (implemented — Phase 3)
+`SpringAiFraudCaseAgent` (`agent.springai` — the only package importing
+Spring AI chat types, on Spring AI 1.1.8). The trusted system prompt is a
+classpath resource plus the structured-output format contract; all case
+content is untrusted data inside tagged sections of the user message.
+Exactly the six allow-listed tools are registered as
+`FunctionToolCallback`s bound to the current case: arguments must equal the
+case's own masked references, a shared `capstone.ai.max-tool-calls` budget
+applies, executions go through `ToolExecutionService` (real traces +
+persisted evidence + audit) and an elapsed bound reports `TIMEOUT` to the
+model. The tool-call loop is owned by the agent
+(`internalToolExecutionEnabled=false`) and bounded by
+`capstone.ai.max-rounds`. Structured output is bound to
+`AiRecommendationOutput` (which deliberately lacks `ruleIds`) and mapped to
+`FraudCaseRecommendation`; malformed JSON, unknown enums, bad confidence,
+fabricated citations or broken invariants raise
+`InvalidModelOutputException`, provider failures raise
+`SpringAiProcessingException`. `InvestigationService` validates every AI
+recommendation via `RecommendationValidator` (SPRING_AI mode: no rule ids,
+no citations, case-local ids only) and on any failure falls back to the
+rules processor persisted as `RULES_FALLBACK` — audited as
+`MODEL_INVOCATION_*` / `MODEL_OUTPUT_REJECTED` / `RULES_FALLBACK_*`. The
+`ChatModel` bean exists only when `processor-mode=spring-ai` AND a provider
+key is configured; selecting spring-ai without a model fails startup.
+Case memory remains for a later phase.
 
 ### Tools boundary (implemented — evidence tools)
 Explicitly allow-listed, read-only synthetic evidence tools in `tools/`:
@@ -104,16 +121,29 @@ a typed request/result, argument validation (masked-ref hygiene enforced),
 pinned training fixtures plus seeded hash derivation via `Determinism`,
 provenance and structured statuses (`SUCCESS`, `NOT_FOUND`,
 `INVALID_REQUEST`). No financial or customer-impacting tool can exist.
-`retrievePolicyEvidence` (RAG-backed) and `saveAuditEvent` arrive in later
-phases; Phase 2 audit writes go through the internal `AuditService` +
-restricted `AuditEventAppender`.
+`retrievePolicyEvidence` is satisfied in Phase 4 by the deterministic
+`PolicyRetriever` path below; `saveAuditEvent` stays an internal service —
+audit writes go through `AuditService` + restricted `AuditEventAppender`.
 
-### Knowledge boundary (later)
-`PolicyIngestionService` validates synthetic-policy metadata, chunks by
-meaningful headings, embeds and stores in a Spring AI `VectorStore`. The
-retriever applies `retrieval.top-k`/`similarity-threshold`, filters stale
-versions, injects only relevant passages, returns exact citation metadata —
-and abstains when nothing qualifies. Policy is never invented.
+### Knowledge boundary (implemented — Phase 4)
+Synthetic policy documents (`src/main/resources/policies/*.md`) carry
+front-matter metadata (`documentId`/`version`/`effectiveDate`/`status`/
+`category`). `PolicyIngestionService` validates metadata, rejects
+malformed documents, chunks by `## ` sections with stable chunk ids and
+preserves exact passage text. Chunks are embedded by
+`DeterministicEmbeddingModel` (vocabulary-hashed, zero external calls)
+into `SyntheticPolicyVectorStore`, a Spring AI `VectorStore` backed by the
+indexed catalog — no external vector service. `PolicyRetriever` builds the
+query from validated case facts + actual tool outcomes, runs top-K
+similarity search, then filters: score ≥ `retrieval.similarity-threshold`,
+top-K bound, superseded versions and future-effective/withdrawn documents
+excluded — returning `MATCHED`/`NO_MATCH`/`UNAVAILABLE`. Retrieved
+passages enter the prompt inside an `UNTRUSTED POLICY DATA` section; the
+model may cite only supplied chunk ids, citations resolve only against the
+current case's retrieved set (foreign/fabricated/altered/below-threshold
+citations → `POLICY_CITATION_REJECTED`), and `NO_MATCH` routes to manual
+review — policy is never invented. `capstone.retrieval.enabled=false`
+removes all RAG beans; rules mode needs none of it.
 
 ### Persistence boundary
 Phase 2 replaces the in-memory placeholder with Flyway-managed JPA
@@ -127,7 +157,10 @@ between domain objects and entities — the domain never sees JPA. The
 `AuditEventAppender` repository deliberately exposes no update/delete
 methods and `AuditEventEntity` is `@PreUpdate`/`@PreRemove`-guarded and
 immutable; audit rows store SHA-256 `payload_hash` of the redacted
-payload, never raw sensitive values.
+payload, never raw sensitive values. `V2__policy_citation_passage.sql`
+(Phase 4) adds policy-citation columns (`title`, `effective_date`,
+`section_id`, `chunk_id`, `score`, `passage`) so every citation persists
+the exact verbatim passage it references.
 
 ### Observability boundary
 Every investigation will carry a correlation ID through application →
@@ -137,8 +170,19 @@ are not logged. Phase 1 exposes only `/actuator/health` with
 `show-details: never` — no database, provider or vector store is required
 for the app to be healthy at this stage.
 
-### Human-review boundary
-Recommendations are advisory. `humanReviewRequired=true` is enforced in the
-domain contract (`FraudCaseRecommendation` rejects `false`) and in startup
-configuration. Final disposition is recorded by an authorised reviewer in a
-later phase; no agent output can bypass it.
+### Human-review boundary (implemented — Phase 6)
+Recommendations are advisory; `humanReviewRequired=true` is enforced in the
+domain contract and startup configuration. `POST /api/cases/{id}/reviews`
+records a typed human disposition (`ESCALATE`/`REROUTE`/`OVERRIDE` →
+`ROUTED`, `REQUEST_MORE_INFORMATION` → `INCOMPLETE`, `CLOSE` → `CLOSED`)
+via `ReviewService`. Reviewer identity/role resolve from
+`ReviewerIdentityProvider` (synthetic `capstone.review.*` seam until real
+auth); only `REVIEWER` may disposition. Reason is mandatory; evidence,
+policy, missing-information and contradiction acknowledgements are
+enforced per the review context. Requests must reference the current
+recommendation (stale/foreign → 409); `@Version` + a unique constraint on
+`recommendation_id` make concurrent submissions safe; `clientReference`
+gives idempotent replay. `ReviewDisposition` rows are immutable
+(`@PreUpdate`/`@PreRemove`), audited (`REVIEW_*`), and never imply a
+banking action — disposition is a workflow record only. `UNDER_REVIEW →
+INCOMPLETE` is the sole Phase 6 state-machine refinement.

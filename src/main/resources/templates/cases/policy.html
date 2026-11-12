@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{fragments/layout :: head('Policy Citations')}"></head>
+<body>
+<header th:replace="~{fragments/layout :: header}"></header>
+<div class="workbench">
+    <nav th:replace="~{fragments/workflow-nav :: nav}"></nav>
+    <main class="workspace" id="main">
+        <h1>Policy Citations</h1>
+
+        <section class="card" aria-labelledby="retrieval-h">
+            <h2 id="retrieval-h">Retrieval context</h2>
+            <dl class="meta-list">
+                <div><dt>Top-K</dt><dd th:text="${topK}">4</dd></div>
+                <div><dt>Similarity threshold</dt>
+                    <dd th:text="${similarityThreshold}">0.72</dd></div>
+                <div><dt>Retrieval status</dt>
+                    <dd><span class="badge" th:text="${policyStatus}">RETRIEVED</span></dd></div>
+            </dl>
+            <p class="help" th:if="${policyStatus.name() != 'NOT_REQUESTED'}">
+                Query context:
+                <span th:text="${queryContext}">…</span>
+            </p>
+        </section>
+
+        <!-- Abstention / unavailable banners -->
+        <div th:if="${policyStatus.name() == 'NO_MATCH'}"
+             class="callout callout-warn" role="status">
+            <strong>NO APPLICABLE POLICY FOUND.</strong>
+            Policy retrieval abstained because no approved passage met the
+            required retrieval criteria. Manual review is required where
+            procedural policy grounding is needed.
+        </div>
+        <div th:if="${policyStatus.name() == 'UNAVAILABLE'}"
+             class="callout callout-warn" role="status">
+            <strong>Policy retrieval unavailable.</strong>
+            The retrieval service could not complete a lookup for this
+            case. No citation is shown — nothing is fabricated.
+        </div>
+        <div th:if="${policyStatus.name() == 'NOT_REQUESTED'}"
+             class="callout" role="status">
+            <strong>Policy retrieval was not performed.</strong>
+            The RULES processor works without retrieval infrastructure —
+            no citation is attached to this recommendation.
+        </div>
+
+        <section th:if="${citations.isEmpty() && policyStatus.name() == 'RETRIEVED'}"
+                 class="card empty-state">
+            <h2>No policy retrieval has been completed</h2>
+        </section>
+
+        <section th:unless="${citations.isEmpty()}" aria-labelledby="cit-h">
+            <h2 id="cit-h">Citations</h2>
+            <p class="help">Similarity is a retrieval score — it is not a
+                probability that the policy is correct. The configured
+                threshold is shown above for comparison.</p>
+            <article class="card citation-card" th:each="c : ${citations}">
+                <div class="card-source">
+                    <span class="badge badge-source-policy">Retrieved Policy</span>
+                    <span class="badge"
+                          th:text="'score ' + ${#numbers.formatDecimal(c.score, 1, 2)}">score 0.89</span>
+                </div>
+                <h3 th:text="${c.title}">Card-Not-Present Dispute Handling Procedure</h3>
+                <dl class="meta-list">
+                    <div><dt>Document</dt>
+                        <dd th:text="${c.documentId}">POL-CNP-017</dd></div>
+                    <div><dt>Version</dt><dd th:text="${c.version}">3.2</dd></div>
+                    <div><dt>Effective date</dt>
+                        <dd th:text="${c.effectiveDate}">2026-01-01</dd></div>
+                    <div><dt>Section</dt><dd th:text="${c.section}">3.2</dd></div>
+                    <div><dt>Chunk ID</dt>
+                        <dd class="mono wrap-id" th:text="${c.chunkId}">…</dd></div>
+                    <div><dt>Citation ID</dt>
+                        <dd class="mono wrap-id" th:text="${c.citationId}">…</dd></div>
+                </dl>
+                <blockquote class="passage" th:text="${c.passage}">…</blockquote>
+                <a class="btn btn-secondary"
+                   th:href="@{/ui/cases/{id}/policy/citations/{cid}(id=${case.caseId()}, cid=${c.citationId})}">
+                    Open Passage</a>
+            </article>
+        </section>
+    </main>
+</div>
+<footer th:replace="~{fragments/layout :: footer}"></footer>
+</body>
+</html>
