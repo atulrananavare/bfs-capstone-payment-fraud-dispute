@@ -24,6 +24,13 @@ spring:
 server:
   port: 8080
 
+logging:
+  level:
+    # Raw model output must never reach logs. Spring AI's converter logs the
+    # full model text at ERROR when JSON parsing fails — suppress it;
+    # rejection is still audited via MODEL_OUTPUT_REJECTED.
+    org.springframework.ai.converter.BeanOutputConverter: OFF
+
 management:
   endpoints:
     web:
@@ -35,7 +42,11 @@ management:
       show-details: never
 
 capstone:
-  # Processor implementations: rules | spring-ai (spring-ai arrives in a later phase).
+  # Processor implementations: rules | spring-ai.
+  # rules: deterministic, no model/provider/credential required.
+  # spring-ai: Spring AI adapter; requires spring.ai.anthropic.api-key
+  #   (environment variable only — never committed) and falls back to the
+  #   deterministic rules processor on any provider failure or invalid output.
   processor-mode: rules
   # Safety invariants. These values are validated at startup; unsafe overrides fail fast.
   human-review-required: true
@@ -49,3 +60,10 @@ capstone:
   tools:
     timeout-ms: 2500
     deterministic-seed: fraud-training-v1
+  ai:
+    # Bounds for the Spring AI adapter. Ignored in rules mode.
+    timeout-ms: 10000
+    temperature: 0.0
+    max-tool-calls: 6
+    max-rounds: 4
+    max-output-tokens: 1024

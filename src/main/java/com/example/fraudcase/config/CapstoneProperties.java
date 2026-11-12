@@ -52,9 +52,85 @@ public class CapstoneProperties {
     @NotNull
     private Tools tools = new Tools();
 
+    @Valid
+    @NotNull
+    private Ai ai = new Ai();
+
     public enum ProcessorMode {
         RULES,
         SPRING_AI
+    }
+
+    /**
+     * Bounds for the Spring AI adapter (Phase 3). None of these apply in
+     * rules mode — no model, provider or credential is touched there.
+     */
+    public static class Ai {
+
+        /** Bound on one model invocation (connect/read timeout). */
+        @Min(1000)
+        @Max(120_000)
+        private long timeoutMs = 10_000;
+
+        /** Sampling temperature sent to the provider; 0 keeps output stable. */
+        @DecimalMin("0.0")
+        @DecimalMax("2.0")
+        private double temperature = 0.0;
+
+        /** Maximum model-driven tool calls allowed per investigation. */
+        @Min(1)
+        @Max(50)
+        private int maxToolCalls = 6;
+
+        /** Maximum model round-trips (tool-call loop iterations) per run. */
+        @Min(1)
+        @Max(16)
+        private int maxRounds = 4;
+
+        /** Upper bound on generated tokens for the structured answer. */
+        @Min(256)
+        @Max(8192)
+        private int maxOutputTokens = 1024;
+
+        public long getTimeoutMs() {
+            return timeoutMs;
+        }
+
+        public void setTimeoutMs(long timeoutMs) {
+            this.timeoutMs = timeoutMs;
+        }
+
+        public double getTemperature() {
+            return temperature;
+        }
+
+        public void setTemperature(double temperature) {
+            this.temperature = temperature;
+        }
+
+        public int getMaxToolCalls() {
+            return maxToolCalls;
+        }
+
+        public void setMaxToolCalls(int maxToolCalls) {
+            this.maxToolCalls = maxToolCalls;
+        }
+
+        public int getMaxRounds() {
+            return maxRounds;
+        }
+
+        public void setMaxRounds(int maxRounds) {
+            this.maxRounds = maxRounds;
+        }
+
+        public int getMaxOutputTokens() {
+            return maxOutputTokens;
+        }
+
+        public void setMaxOutputTokens(int maxOutputTokens) {
+            this.maxOutputTokens = maxOutputTokens;
+        }
     }
 
     public static class Retrieval {
@@ -184,5 +260,13 @@ public class CapstoneProperties {
 
     public void setTools(Tools tools) {
         this.tools = tools;
+    }
+
+    public Ai getAi() {
+        return ai;
+    }
+
+    public void setAi(Ai ai) {
+        this.ai = ai;
     }
 }

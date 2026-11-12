@@ -29,6 +29,8 @@ public final class InvestigationResponses {
             int toolsExecuted,
             int evidenceCount,
             String recommendationId,
+            RecommendationMode mode,
+            boolean fallbackUsed,
             CaseClassification classification,
             RiskLevel riskLevel,
             RecommendedRoute recommendedRoute,

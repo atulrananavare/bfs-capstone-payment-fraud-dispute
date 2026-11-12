@@ -6,5 +6,7 @@ package com.example.fraudcase.domain;
 public enum RecommendationMode {
 
     RULES,
-    SPRING_AI
+    SPRING_AI,
+    /** Deterministic rules output persisted after a Spring AI failure/rejection. */
+    RULES_FALLBACK
 }

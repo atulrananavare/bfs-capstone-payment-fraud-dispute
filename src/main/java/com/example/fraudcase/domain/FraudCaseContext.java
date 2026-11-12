@@ -15,7 +15,8 @@ public record FraudCaseContext(
         FraudCase fraudCase,
         List<EvidenceItem> evidence,
         List<ToolOutcome> toolOutcomes,
-        List<String> toolTraceIds) {
+        List<String> toolTraceIds,
+        String investigationId) {
 
     public FraudCaseContext {
         Objects.requireNonNull(fraudCase, "fraudCase is required");
@@ -24,8 +25,13 @@ public record FraudCaseContext(
         toolTraceIds = toolTraceIds == null ? List.of() : List.copyOf(toolTraceIds);
     }
 
+    public FraudCaseContext(FraudCase fraudCase, List<EvidenceItem> evidence,
+                            List<ToolOutcome> toolOutcomes, List<String> toolTraceIds) {
+        this(fraudCase, evidence, toolOutcomes, toolTraceIds, null);
+    }
+
     public FraudCaseContext(FraudCase fraudCase) {
-        this(fraudCase, List.of(), List.of(), List.of());
+        this(fraudCase, List.of(), List.of(), List.of(), null);
     }
 
     public String caseId() {

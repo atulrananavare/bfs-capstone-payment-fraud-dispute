@@ -4,8 +4,9 @@
 # adjust for your environment. NEVER commit real credentials, API keys,
 # passwords or tokens. Placeholders below are intentional.
 #
-# Phase 2 requires NO AI provider, vector store or external database:
-# persistence is an embedded, in-memory H2 database migrated by Flyway.
+# Default rules mode requires NO AI provider, vector store, credentials or
+# external database: persistence is an embedded, in-memory H2 database
+# migrated by Flyway.
 
 spring:
   application:
@@ -53,19 +54,37 @@ capstone:
   tools:
     timeout-ms: 2500
     deterministic-seed: fraud-training-v1
+  ai:
+    # Spring AI adapter bounds (Phase 3). Ignored in rules mode.
+    timeout-ms: 10000          # per model-invocation connect/read bound
+    temperature: 0.0           # keep output stable
+    max-tool-calls: 6          # model-driven tool-call budget per investigation
+    max-rounds: 4              # tool-call loop bound per investigation
+    max-output-tokens: 1024    # bound on the structured answer
 
 # ---------------------------------------------------------------------------
-# FUTURE (later phases only — nothing below is active in Phase 2):
+# SPRING AI MODE (Phase 3) — uncomment to enable. Requires a real provider
+# credential supplied via environment variable; it is never committed.
+# With mode=spring-ai but no configured model the application refuses to
+# start (fail-safe configuration error). At runtime any provider failure or
+# invalid model output falls back to the deterministic rules processor and
+# is persisted/audited as mode RULES_FALLBACK.
+#
+# capstone:
+#   processor-mode: spring-ai
 #
 # spring:
 #   ai:
-#     anthropic:                      # or the approved model provider
-#       api-key: ${ANTHROPIC_API_KEY} # set via environment/secret manager only
-#     vectorstore:
-#       <provider>:
-#         # connection details go here when the vector store is selected
+#     anthropic:
+#       api-key: ${ANTHROPIC_API_KEY}   # environment variable only
+#       chat:
+#         options:
+#           model: claude-sonnet-4-5    # pin per environment
 #
-#   datasource:                       # to move off embedded H2 later
+# ---------------------------------------------------------------------------
+# FUTURE (later phases only — nothing below is active yet):
+#
+#   datasource:                         # to move off embedded H2 later
 #     url: jdbc:<db>://<host>/<schema>
 #     username: ${DB_USERNAME}
 #     password: ${DB_PASSWORD}

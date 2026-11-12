@@ -1,12 +1,14 @@
 package com.example.fraudcase.application;
 
 /**
- * Thrown when the configured processor mode has no implementation in this
- * phase (e.g. spring-ai before the AI adapter exists).
+ * Thrown when the configured processor mode cannot run: either the mode
+ * itself has no implementation, or spring-ai mode is selected without a
+ * configured model. Startup fails fast with a clear configuration error —
+ * the application never silently degrades.
  */
 public class ProcessorModeUnavailableException extends RuntimeException {
 
-    public ProcessorModeUnavailableException(String mode) {
-        super("processor-mode '" + mode + "' is not implemented in this phase; use rules");
+    public ProcessorModeUnavailableException(String detail) {
+        super(detail);
     }
 }

@@ -13,9 +13,25 @@ import java.util.Set;
 /**
  * Framework-neutral validation for processor output. A recommendation that
  * fails validation must never be persisted as an approved recommendation.
+ *
+ * <p>Mode-aware rules (Phase 3):
+ * <ul>
+ *   <li>{@code RULES} — must expose at least one known deterministic rule id.</li>
+ *   <li>{@code RULES_FALLBACK} — same rule contract as {@code RULES}; the
+ *       caller passes the rule ids the fallback may legitimately emit.</li>
+ *   <li>{@code SPRING_AI} — must NOT claim deterministic rule ids (the model
+ *       did not run the rules engine) and must not carry policy citations
+ *       (no retrieval exists in this phase).</li>
+ * </ul>
+ * Rationale is bounded for every mode and must never claim that an
+ * autonomous financial, account-control or customer-contact action was
+ * executed.
  */
 @Component
 public class RecommendationValidator {
+
+    /** Matches the {@code recommendation.rationale} column bound. */
+    public static final int MAX_RATIONALE_LENGTH = 2000;
 
     /**
      * @param recommendation    the processor output to check
@@ -60,6 +76,26 @@ public class RecommendationValidator {
             violations.add("humanReviewRequired must always be true");
         }
 
+        String rationale = recommendation.rationale();
+        if (rationale == null || rationale.isBlank()) {
+            violations.add("rationale is required");
+        } else {
+            if (rationale.length() > MAX_RATIONALE_LENGTH) {
+                violations.add("rationale exceeds " + MAX_RATIONALE_LENGTH + " characters");
+            }
+            if (ActionClaimGuard.claimsExecutedAction(rationale)) {
+                violations.add("rationale claims an executed autonomous action, "
+                        + "which is permanently out of scope");
+            }
+        }
+
+        // No retrieval exists in this phase: citations can never be
+        // legitimate regardless of which processor produced the output.
+        if (!recommendation.policyCitations().isEmpty()) {
+            violations.add("policyCitations must be empty: no policy retrieval "
+                    + "exists in this phase");
+        }
+
         boolean insufficientEvidence =
                 recommendation.classification() == CaseClassification.INSUFFICIENT_EVIDENCE;
         if (recommendation.evidenceIds().isEmpty() && !insufficientEvidence) {
@@ -81,7 +117,7 @@ public class RecommendationValidator {
                     + traces);
         }
 
-        if (mode == RecommendationMode.RULES) {
+        if (mode == RecommendationMode.RULES || mode == RecommendationMode.RULES_FALLBACK) {
             if (recommendation.ruleIds().isEmpty()) {
                 violations.add("rules-mode recommendation must expose at least one rule id");
             }
@@ -90,6 +126,10 @@ public class RecommendationValidator {
             if (!unknown.isEmpty()) {
                 violations.add("unknown rule ids for rules mode: " + unknown);
             }
+        } else if (mode == RecommendationMode.SPRING_AI
+                && !recommendation.ruleIds().isEmpty()) {
+            violations.add("spring-ai output must not claim deterministic rule ids: "
+                    + recommendation.ruleIds());
         }
 
         return violations;

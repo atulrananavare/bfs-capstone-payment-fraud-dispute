@@ -8,6 +8,7 @@ import com.example.fraudcase.application.FraudCaseService;
 import com.example.fraudcase.application.InvestigationService;
 import com.example.fraudcase.domain.FraudCase;
 import com.example.fraudcase.domain.FraudCaseRecommendation;
+import com.example.fraudcase.domain.RecommendationMode;
 import com.example.fraudcase.persistence.PolicyCitationRepository;
 import com.example.fraudcase.persistence.RecommendationEntity;
 import org.springframework.http.ResponseEntity;
@@ -57,6 +58,8 @@ public class InvestigationController {
                 result.toolsExecuted(),
                 result.evidenceCount(),
                 latestRecommendationId(caseId),
+                result.mode(),
+                result.mode() == RecommendationMode.RULES_FALLBACK,
                 rec.classification(),
                 rec.riskLevel(),
                 rec.recommendedRoute(),
