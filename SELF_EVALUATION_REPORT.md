@@ -1,5 +1,8 @@
 # Capstone Self-Evaluation Report
 
+- Participant: **Atul Rananavare**
+- Evaluation date: 2026-11-12
+
 ## 1. Executive Summary
 
 - Project: `fraud-case-agent` — Intelligent Payment Fraud Investigation & Dispute
